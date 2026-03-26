@@ -1,0 +1,64 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('jurni', {
+  // Config
+  getConfig: () => ipcRenderer.invoke('get-config'),
+  setConfig: (key, value) => ipcRenderer.invoke('set-config', key, value),
+
+  // Data
+  getScores: () => ipcRenderer.invoke('get-scores'),
+  getMoments: (filters) => ipcRenderer.invoke('get-moments', filters),
+  getEntities: (type) => ipcRenderer.invoke('get-entities', type),
+  getPatterns: () => ipcRenderer.invoke('get-patterns'),
+  getStats: () => ipcRenderer.invoke('get-stats'),
+  getDashboardData: () => ipcRenderer.invoke('get-dashboard-data'),
+  getEntityDetail: (id) => ipcRenderer.invoke('get-entity-detail', id),
+
+  // Connectors
+  openConnector: (provider) => ipcRenderer.invoke('open-connector', provider),
+  closeConnector: (provider) => ipcRenderer.invoke('close-connector', provider),
+  getConnectorStatus: (provider) => ipcRenderer.invoke('get-connector-status', provider),
+  selectPhotosFolder: () => ipcRenderer.invoke('select-photos-folder'),
+
+  // Import (secondary — historical data)
+  importConversations: (filePath) => ipcRenderer.invoke('import-conversations', filePath),
+  selectFile: () => ipcRenderer.invoke('select-file'),
+
+  // Scores
+  recalculateScores: () => ipcRenderer.invoke('recalculate-scores'),
+
+  // Data management
+  deleteAllData: () => ipcRenderer.invoke('delete-all-data'),
+  exportData: () => ipcRenderer.invoke('export-data'),
+
+  // Logs
+  getLogs: () => ipcRenderer.invoke('get-logs'),
+  getLogPath: () => ipcRenderer.invoke('get-log-path'),
+
+  // Events from main process
+  onImportProgress: (callback) => {
+    const handler = (_, progress) => callback(progress);
+    ipcRenderer.on('import-progress', handler);
+    return () => ipcRenderer.removeListener('import-progress', handler);
+  },
+  onConnectorStatus: (callback) => {
+    const handler = (_, status) => callback(status);
+    ipcRenderer.on('connector-status', handler);
+    return () => ipcRenderer.removeListener('connector-status', handler);
+  },
+  onNewMoment: (callback) => {
+    const handler = (_, moment) => callback(moment);
+    ipcRenderer.on('new-moment', handler);
+    return () => ipcRenderer.removeListener('new-moment', handler);
+  },
+  onScoresUpdated: (callback) => {
+    const handler = (_, scores) => callback(scores);
+    ipcRenderer.on('scores-updated', handler);
+    return () => ipcRenderer.removeListener('scores-updated', handler);
+  },
+  onLogEntry: (callback) => {
+    const handler = (_, entry) => callback(entry);
+    ipcRenderer.on('log-entry', handler);
+    return () => ipcRenderer.removeListener('log-entry', handler);
+  },
+});

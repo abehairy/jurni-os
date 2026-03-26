@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-cream text-charcoal font-body;
+  }
+
+  /* Electron title bar drag area */
+  .titlebar-drag {
+    -webkit-app-region: drag;
+  }
+  .titlebar-drag button, .titlebar-drag a, .titlebar-drag input {
+    -webkit-app-region: no-drag;
+  }
+}
+
+@layer components {
+  .score-ring {
+    transition: stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .glass-card {
+    @apply bg-white/60 backdrop-blur-sm border border-white/40 rounded-2xl shadow-sm;
+  }
+
+  .insight-card {
+    @apply p-4 rounded-xl border-l-4 bg-white/40;
+  }
+
+  .insight-card.high {
+    @apply border-l-score-red;
+    background-color: rgba(254, 242, 242, 0.4);
+  }
+
+  .insight-card.medium {
+    @apply border-l-score-yellow;
+    background-color: rgba(255, 251, 235, 0.4);
+  }
+
+  .insight-card.low {
+    @apply border-l-score-green;
+    background-color: rgba(240, 253, 244, 0.4);
+  }
+
+  .dimension-bar {
+    @apply h-2.5 rounded-full transition-all duration-700 ease-out;
+  }
+}
+
+/* Smooth page transitions */
+.page-enter {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms ease, transform 300ms ease;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d4c5b5;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b5a595;
+}

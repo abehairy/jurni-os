@@ -1,0 +1,8 @@
+its important we nail 1st time for exmaple , the proecss of ingestion should happen in batches
+and the onbaording should anke it feel like abreeze for xampke get he fist 100 , and start anlazying
+and showing things while the ohter haprpoesc hachpein hte bakcorund.
+
+asl checks to make sure its resleiten thingsl ike
+- disk size
+- persmisiosn
+these can cause failure osf the app so our app must handle them and always
