@@ -5,9 +5,11 @@
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "start": "vite build && electron .",
     "build": "vite build && electron-builder",
-    "vite:dev": "vite",
-    "electron:dev": "electron ."
+    "rebuild": "npx @electron/rebuild",
+    "reset": "rm -rf ~/.jurni/jurni.db && echo 'Database wiped'",
+    "logs": "tail -f ~/.jurni/crawler.log"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",

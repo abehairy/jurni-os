@@ -54,10 +54,22 @@ function createWindow() {
     },
   });
 
-  if (isDev) {
+  const distIndex = path.join(__dirname, '..', 'dist', 'index.html');
+  if (isDev && fs.existsSync(distIndex)) {
+    // Try Vite dev server first, fall back to built dist
+    const http = require('http');
+    const req = http.get('http://localhost:5173', () => {
+      mainWindow.loadURL('http://localhost:5173');
+      req.destroy();
+    });
+    req.on('error', () => {
+      mainWindow.loadFile(distIndex);
+    });
+    req.setTimeout(1000, () => { req.destroy(); mainWindow.loadFile(distIndex); });
+  } else if (fs.existsSync(distIndex)) {
+    mainWindow.loadFile(distIndex);
+  } else if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
 
   mainWindow.on('closed', () => { mainWindow = null; });
