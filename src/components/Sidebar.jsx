@@ -1,12 +1,9 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Map as MapIcon, Clock, Users, Waves, Settings } from 'lucide-react';
+import { Map as MapIcon, Settings } from 'lucide-react';
 
 const NAV_ITEMS = [
   { id: 'landscape', label: 'Landscape', icon: MapIcon },
-  { id: 'timeline', label: 'Timeline', icon: Clock },
-  { id: 'people', label: 'People', icon: Users },
-  { id: 'patterns', label: 'Patterns', icon: Waves },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

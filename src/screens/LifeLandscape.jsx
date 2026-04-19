@@ -17,6 +17,7 @@ const GROUPS = [
   { id: 'topic', label: 'Topics' },
   { id: 'category', label: 'Domains' },
   { id: 'people', label: 'People' },
+  { id: 'time', label: 'Timeline' },
 ];
 
 export default function LifeLandscape({ api, onGoToSettings }) {

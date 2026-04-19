@@ -13,6 +13,23 @@ function hashContent(str) {
   return crypto.createHash('sha1').update(String(str || '')).digest('hex').slice(0, 16);
 }
 
+/**
+ * Pretty label for a day bucket in the landscape Time view.
+ * Takes 'YYYY-MM-DD' and returns 'Today' / 'Yesterday' / 'Apr 12'.
+ */
+function formatDayLabel(isoDay) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (isoDay === today) return 'Today';
+  const y = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  if (isoDay === y) return 'Yesterday';
+  try {
+    const [yr, m, d] = isoDay.split('-').map(Number);
+    const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const thisYear = new Date().getFullYear();
+    return yr === thisYear ? `${names[m - 1]} ${d}` : `${names[m - 1]} ${d}, ${yr}`;
+  } catch { return isoDay; }
+}
+
 class Database {
   constructor(jurniDir) {
     this.jurniDir = jurniDir;
@@ -834,6 +851,63 @@ class Database {
       };
     }
 
+    if (group === 'time') {
+      // Timeline-as-landscape: daily buckets, sized by activity, colored by
+      // the dominant category that day. Gives you the chronological lens
+      // without a separate page.
+      const rows = this.db.prepare(`
+        SELECT substr(timestamp, 1, 10) as key,
+               COUNT(*) as count
+        FROM moments
+        WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+        GROUP BY key
+        ORDER BY key DESC
+        LIMIT 30
+      `).all(start, end);
+
+      const total = rows.reduce((s, r) => s + r.count, 0) || 1;
+
+      // For each day, find the dominant category + tone with one pass each.
+      // Cheap because rows is capped at 30.
+      const catStmt = this.db.prepare(`
+        SELECT COALESCE(category, 'other') as category, COUNT(*) as c
+        FROM moments
+        WHERE source = 'conversation' AND substr(timestamp, 1, 10) = ?
+        GROUP BY category
+        ORDER BY c DESC
+        LIMIT 1
+      `);
+      const toneStmt = this.db.prepare(`
+        SELECT tone, COUNT(*) as c
+        FROM moments
+        WHERE source = 'conversation' AND substr(timestamp, 1, 10) = ?
+          AND tone IS NOT NULL
+        GROUP BY tone
+        ORDER BY c DESC
+        LIMIT 1
+      `);
+
+      return {
+        period: { start, end, group },
+        total,
+        tiles: rows.map(r => {
+          const cat = catStmt.get(r.key)?.category || 'other';
+          const tone = toneStmt.get(r.key)?.tone || null;
+          return {
+            key: r.key,
+            label: formatDayLabel(r.key),
+            category: cat,
+            count: r.count,
+            pctOfTotal: r.count / total,
+            changePct: 0,
+            tone,
+            summary: null,
+            spark: [],
+          };
+        }),
+      };
+    }
+
     if (group === 'people') {
       const { normalized } = this.getUserIdentity();
       const rows = this.db.prepare(`
@@ -1020,7 +1094,12 @@ class Database {
    */
   getTileDetail({ key, group = 'topic', start, end }) {
     const isCategory = group === 'category';
-    const whereClause = isCategory
+    const isTime = group === 'time';
+    // For time tiles the "key" is a YYYY-MM-DD day bucket — the WHERE filter
+    // and the (start, end) window both compress to that single day.
+    const whereClause = isTime
+      ? "substr(timestamp, 1, 10) = ?"
+      : isCategory
       ? "COALESCE(category, 'other') = ?"
       : 'topic = ?';
 

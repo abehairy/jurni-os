@@ -106,7 +106,7 @@ async function processBatch(moments, existingEntities, recentPatterns, apiKey, m
     prompt,
     apiKey,
     model: model || DEFAULT_ANALYSIS_MODEL,
-    temperature: 0.3,
+      temperature: 0.3,
     maxTokens: 3000,
   });
 

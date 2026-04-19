@@ -2,9 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from './components/Sidebar';
 import LifeLandscape from './screens/LifeLandscape';
-import Timeline from './screens/Timeline';
-import People from './screens/People';
-import Patterns from './screens/Patterns';
 import Settings from './screens/Settings';
 import Onboarding from './screens/Onboarding';
 
@@ -116,27 +113,27 @@ export default function App() {
 
   const screens = {
     landscape: <LifeLandscape api={api} onGoToSettings={() => setCurrentScreen('settings')} />,
-    timeline: <Timeline api={api} />,
-    people: <People api={api} />,
-    patterns: <Patterns api={api} />,
     settings: <Settings api={api} config={config} setConfig={setConfig} onReset={handleReset} />,
   };
 
+  // Guard against stale localStorage keys or code paths trying to navigate to deleted screens
+  const activeScreen = screens[currentScreen] ? currentScreen : 'landscape';
+
   return (
     <div className="h-screen flex overflow-hidden bg-cream">
-      <Sidebar current={currentScreen} onNavigate={setCurrentScreen} />
+      <Sidebar current={activeScreen} onNavigate={setCurrentScreen} />
       <main className="flex-1 overflow-y-auto">
         <div className="titlebar-drag h-8 flex-shrink-0" />
         <AnimatePresence mode="wait">
           <motion.div
-            key={currentScreen}
+            key={activeScreen}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
             className="px-8 pb-8"
           >
-            {screens[currentScreen]}
+            {screens[activeScreen]}
           </motion.div>
         </AnimatePresence>
       </main>
