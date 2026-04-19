@@ -3,12 +3,40 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('./database');
 const { processConversationImport } = require('../channels/conversation');
-const { processBatch } = require('../processing/processor');
+const {
+  processBatch,
+  categorizeThread,
+  generateBriefing,
+  DEFAULT_ANALYSIS_MODEL,
+  DEFAULT_LANDSCAPE_MODEL,
+} = require('../processing/processor');
 const { computeScores } = require('../scoring/engine');
 
 const JURNI_DIR = path.join(require('os').homedir(), '.jurni');
 const LOG_PATH = path.join(JURNI_DIR, 'crawler.log');
 const isDev = !app.isPackaged;
+
+/**
+ * Models exposed in the Settings picker. Costs are rough estimates per
+ * thread categorization (prompt ~2k tokens, response ~300 tokens).
+ *
+ * Adding a new model? Just append here — the Settings UI reads this list.
+ */
+const AVAILABLE_MODELS = {
+  landscape: [
+    { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash', note: 'Fast + accurate · ~$0.0003/thread · DEFAULT' },
+    { id: 'anthropic/claude-sonnet-4.5', label: 'Claude Sonnet 4.5', note: 'Best quality · ~$0.003/thread' },
+    { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet', note: 'Strong quality · ~$0.003/thread' },
+    { id: 'openai/gpt-4o-mini', label: 'GPT-4o mini', note: 'Fast + cheap · ~$0.0002/thread' },
+    { id: 'openai/gpt-4o', label: 'GPT-4o', note: 'Very strong · ~$0.005/thread' },
+    { id: 'mistralai/mistral-small-2603', label: 'Mistral Small', note: 'Cheapest · accuracy varies' },
+  ],
+  analysis: [
+    { id: 'mistralai/mistral-small-2603', label: 'Mistral Small', note: 'Cheap · emotions/patterns · DEFAULT' },
+    { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash', note: 'Better signals · ~10x cost' },
+    { id: 'openai/gpt-4o-mini', label: 'GPT-4o mini', note: 'Fast + accurate' },
+  ],
+};
 
 let mainWindow = null;
 let tray = null;
@@ -170,8 +198,29 @@ function handleCapturedMessage(event, message) {
     },
   };
 
-  const id = db.insertMoment(moment);
-  if (message.provider) connectorCounts[message.provider] = (connectorCounts[message.provider] || 0) + 1;
+  const { id, inserted } = db.insertMoment(moment);
+
+  // Only count truly-new messages. Duplicates still flow through here on
+  // re-crawls but must not inflate the connector counter or trigger downstream
+  // processing (processor is idempotent on raw_content, but skipping spares cost).
+  if (message.provider) {
+    if (inserted) {
+      connectorCounts[message.provider] = (connectorCounts[message.provider] || 0) + 1;
+    }
+    // Track sync session deltas for the manual "Sync now" button.
+    const s = syncSessions.get(message.provider);
+    if (s) {
+      if (inserted) s.added += 1; else s.skipped += 1;
+      sendToMain('sync-progress', {
+        provider: message.provider,
+        stage: 'capturing',
+        added: s.added,
+        skipped: s.skipped,
+      });
+    }
+  }
+
+  if (!inserted) return;
 
   sendToMain('new-moment', { id, ...moment });
   sendToMain('connector-status', {
@@ -186,6 +235,48 @@ function handleCapturedMessage(event, message) {
 
 let autoProcessTimer = null;
 let autoProcessRunning = false;
+
+/**
+ * In-memory cache for per-tile briefings. Evaporates on app restart
+ * (acceptable — regeneration is ~2s per tile). Cleared whenever the
+ * landscape data changes so we never serve a stale briefing.
+ */
+const briefingCache = new Map();
+const BRIEFING_TTL_MS = 60 * 60 * 1000; // 1 hour
+function clearBriefingCache() { briefingCache.clear(); }
+
+/**
+ * Active sync sessions keyed by provider. A session exists for the duration
+ * of a manual "Sync now" click and tracks how many truly new messages we
+ * inserted vs. how many duplicates we skipped. This is what powers the toast
+ * shown to the user when sync finishes.
+ */
+const syncSessions = new Map();
+const SYNC_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes hard ceiling
+
+function finishSync(provider, outcome) {
+  const s = syncSessions.get(provider);
+  if (!s) return;
+  syncSessions.delete(provider);
+
+  if (s.timeout) clearTimeout(s.timeout);
+  if (s.revealTimer) clearTimeout(s.revealTimer);
+  if (s.hiddenWin && !s.hiddenWin.isDestroyed()) {
+    try { s.hiddenWin.close(); } catch {}
+  }
+
+  const result = {
+    provider,
+    ok: outcome.ok,
+    added: s.added,
+    skipped: s.skipped,
+    error: outcome.error || null,
+    durationMs: Date.now() - s.startedAt,
+  };
+  log('sync', `finished ${provider}`, result);
+  sendToMain('sync-progress', { ...result, stage: outcome.ok ? 'complete' : 'error' });
+  s.resolve(result);
+}
 
 function scheduleAutoProcess() {
   if (autoProcessTimer) return;
@@ -209,20 +300,32 @@ async function autoProcessBatch() {
 
   const existingEntities = db.getEntities();
   const recentPatterns = db.getPatterns();
+  const analysisModel = db.getConfigValue('analysis_model') || DEFAULT_ANALYSIS_MODEL;
+
+  const identity = db.getUserIdentity();
 
   try {
-    const analysis = await processBatch(batch, existingEntities, recentPatterns, apiKey);
+    const analysis = await processBatch(batch, existingEntities, recentPatterns, apiKey, analysisModel, identity);
     log('main', 'LLM analysis complete', {
+      model: analysisModel,
       entities: analysis.entities?.length || 0,
       patterns: analysis.patterns?.length || 0,
       emotions: analysis.emotions?.length || 0,
       decisions: analysis.decisions?.length || 0,
     });
-    if (analysis.entities) analysis.entities.forEach(e => db.upsertEntity(e));
+    if (analysis.entities) analysis.entities.forEach(e => {
+      try { db.upsertEntity(e); } catch (err) {
+        log('main', 'upsertEntity skipped', { name: e.name, type: e.type, err: err.message });
+      }
+    });
     if (analysis.patterns) analysis.patterns.forEach(p => db.insertPattern(p));
     if (analysis.emotions) analysis.emotions.forEach(e => db.insertEmotion(e));
     if (analysis.decisions) analysis.decisions.forEach(d => db.insertDecision(d));
-    batch.forEach(m => db.markMomentProcessed(m.id));
+
+    // Mark all moments in the batch as processed. Landscape fields (topic/
+    // category/tone/summary) are filled in by the thread categorization
+    // pass, not here.
+    for (const m of batch) db.markMomentProcessed(m.id);
 
     const scores = computeScores(db);
     db.saveScores(scores);
@@ -233,11 +336,150 @@ async function autoProcessBatch() {
   }
   autoProcessRunning = false;
 
+  // Kick off thread categorization for any newly-touched threads.
+  // Runs independently of the per-message pass so failures don't block scoring.
+  scheduleThreadCategorization();
+
   // If more unprocessed moments remain, schedule another batch
   const remaining = db.getUnprocessedMoments();
   if (remaining.length >= 5) {
     log('main', `${remaining.length} moments still unprocessed, scheduling next batch`);
     scheduleAutoProcess();
+  }
+}
+
+// ---- Landscape helpers ----
+
+/**
+ * Resolve a range string + weekOffset into a concrete [start, end) window.
+ * range: '1w' | '4w' | '12w' | '1y'  (weekOffset scrubs backwards in weeks)
+ */
+function resolveRange(range, weekOffset = 0) {
+  const end = new Date();
+  // Move "now" back by weekOffset weeks when scrubbing
+  end.setDate(end.getDate() - (weekOffset * 7));
+  const start = new Date(end);
+  const map = { '1w': 7, '4w': 28, '12w': 84, '1y': 365 };
+  const days = map[range] || 28;
+  start.setDate(start.getDate() - days);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+let categorizing = false;
+let threadCategorizationTimer = null;
+
+/**
+ * Schedule a thread-categorization pass. Debounced so that a burst of
+ * processed batches doesn't trigger multiple concurrent runs.
+ */
+function scheduleThreadCategorization() {
+  if (categorizing || threadCategorizationTimer) return;
+  threadCategorizationTimer = setTimeout(() => {
+    threadCategorizationTimer = null;
+    runThreadCategorization().catch(err => {
+      log('categorize', `Thread categorization error: ${err.message}`);
+    });
+  }, 3000);
+}
+
+/**
+ * Categorize conversation threads that have at least one uncategorized
+ * moment. ONE LLM call per thread. Writes the result to every moment in
+ * the thread.
+ *
+ * This is the function that makes the Life Landscape accurate.
+ */
+async function runThreadCategorization() {
+  if (categorizing) return { ok: false, error: 'Already running' };
+  const apiKey = db.getConfigValue('openrouter_api_key');
+  if (!apiKey) return { ok: false, error: 'No API key' };
+
+  categorizing = true;
+  const landscapeModel = db.getConfigValue('landscape_model') || DEFAULT_LANDSCAPE_MODEL;
+  let processedThreads = 0;
+
+  const stats = db.getUncategorizedThreadStats();
+  const totalThreads = stats.pending;
+  log('categorize', `Starting thread categorization`, {
+    model: landscapeModel,
+    pending: totalThreads,
+    total: stats.total,
+  });
+  sendToMain('recat-progress', { processed: 0, total: totalThreads, stage: 'start', unit: 'threads' });
+
+  // In-memory fail tracking so a malformed thread doesn't loop forever
+  // across a single run, without permanently marking it as categorized.
+  const failedThisRun = new Map();
+  const MAX_FAIL_PER_RUN = 2;
+
+  try {
+    while (true) {
+      const threads = db.getUncategorizedThreads(10);
+      // Skip threads we've already failed on twice in this run
+      const todo = threads.filter(t => (failedThisRun.get(t.title) || 0) < MAX_FAIL_PER_RUN);
+      if (todo.length === 0) break;
+
+      const identity = db.getUserIdentity();
+      for (const thread of todo) {
+        try {
+          const knownTopics = db.getKnownTopics();
+          const result = await categorizeThread(thread, knownTopics, apiKey, landscapeModel, identity);
+
+          db.applyThreadCategorization(thread.title, {
+            topic: result.topic,
+            category: result.category || 'other',
+            tone: result.tone,
+            summary: result.summary,
+          });
+
+          log('categorize', `✓ "${thread.title}" → ${result.topic || '(no topic)'} [${result.category}]`, {
+            messages: thread.messageCount,
+            tone: result.tone,
+          });
+
+          processedThreads++;
+          sendToMain('recat-progress', {
+            processed: processedThreads,
+            total: totalThreads,
+            stage: 'working',
+            unit: 'threads',
+          });
+        } catch (err) {
+          const msg = err.message || String(err);
+          // Fatal: no credits. Stop the whole run. Don't touch DB state so
+          // everything retries cleanly once the user adds credits.
+          if (msg.includes('402') || msg.toLowerCase().includes('credits')) {
+            log('categorize', `STOPPED: out of OpenRouter credits. Add credits and hit "Read threads" again.`);
+            sendToMain('recat-progress', {
+              processed: processedThreads,
+              total: totalThreads,
+              stage: 'error',
+              unit: 'threads',
+              error: 'Out of OpenRouter credits. Add credits at openrouter.ai/settings/credits then retry.',
+            });
+            return { ok: false, processed: processedThreads, error: 'out_of_credits' };
+          }
+          // Transient: bump the fail counter but DO NOT mark the thread.
+          // It'll retry on the next scheduled run.
+          const prev = failedThisRun.get(thread.title) || 0;
+          failedThisRun.set(thread.title, prev + 1);
+          log('categorize', `Skipped "${thread.title}" (attempt ${prev + 1}): ${msg.slice(0, 120)}`);
+        }
+
+        await new Promise(r => setTimeout(r, 250));
+      }
+
+      clearBriefingCache();
+      sendToMain('landscape-updated');
+    }
+
+    sendToMain('recat-progress', { processed: processedThreads, total: totalThreads, stage: 'complete', unit: 'threads' });
+    clearBriefingCache();
+    sendToMain('landscape-updated');
+    log('categorize', `Thread categorization complete`, { threads: processedThreads });
+    return { ok: true, processed: processedThreads };
+  } finally {
+    categorizing = false;
   }
 }
 
@@ -262,6 +504,28 @@ app.whenReady().then(() => {
     scheduleAutoProcess();
   }
 
+  // Resurrect any threads that a previous session marked as 'other' on
+  // error (API failure, credit exhaustion, parse error) so they get
+  // re-read with a fresh attempt.
+  const resurrected = db.resetLikelyFailedCategorizations();
+  if (resurrected > 0) {
+    log('main', `Recovered ${resurrected} moments from previous failed runs`);
+  }
+
+  // Clean up any historical rows where an email/handle was mistakenly stored
+  // as a person entity. Upsert now blocks new ones from being inserted.
+  const purgedEmails = db.purgeEmailPersonEntities();
+  if (purgedEmails > 0) {
+    log('main', `Removed ${purgedEmails} email-shaped person entities`);
+  }
+
+  // Kick-start thread categorization if there's a backlog
+  const threadStats = db.getUncategorizedThreadStats();
+  if (threadStats.pending > 0) {
+    log('main', `Found ${threadStats.pending} uncategorized threads, scheduling categorization`);
+    scheduleThreadCategorization();
+  }
+
   // Listen for messages from browser preload scripts
   ipcMain.on('conversation-message', (event, msg) => {
     log('capture', `Message from ${msg.provider} (${msg.source})`, { len: msg.text?.length, title: msg.conversationTitle });
@@ -270,6 +534,49 @@ app.whenReady().then(() => {
   ipcMain.on('browser-status', (event, status) => {
     log('browser', `${status.provider}: ${status.status}`, { message: status.message, count: status.capturedCount });
     sendToMain('connector-status', status);
+
+    // Bridge crawler lifecycle into any active manual-sync session so the
+    // renderer sees real progress instead of a silent "Syncing" spinner.
+    const s = syncSessions.get(status.provider);
+    if (!s) return;
+
+    if (status.status === 'crawl_complete') {
+      finishSync(status.provider, { ok: true });
+    } else if (status.status === 'crawl_error') {
+      finishSync(status.provider, { ok: false, error: status.message || 'Crawl failed' });
+    } else if (status.status === 'crawling') {
+      // Crawler is doing real work — we don't need to reveal the window.
+      if (s.revealTimer) { clearTimeout(s.revealTimer); s.revealTimer = null; }
+      sendToMain('sync-progress', {
+        provider: status.provider,
+        stage: 'crawling',
+        message: status.message || null,
+        processed: status.data?.processed ?? null,
+        total: status.data?.total ?? null,
+        fetched: status.data?.fetched ?? null,
+        threadsSkipped: status.data?.threadsSkipped ?? null,
+        added: s.added,
+        skipped: s.skipped,
+      });
+    } else if (status.status === 'connecting') {
+      sendToMain('sync-progress', {
+        provider: status.provider,
+        stage: 'connecting',
+        message: status.message || 'Waiting for login…',
+        added: s.added,
+        skipped: s.skipped,
+      });
+    }
+  });
+
+  /**
+   * IPC: Lets the browser preload fetch what we already have for a provider
+   * so it can skip re-crawling conversations whose Claude-side updated_at
+   * is older than our local max timestamp. Returns { [uuid]: { maxTs, count } }.
+   */
+  ipcMain.handle('get-conversation-sync-state', (_, provider) => {
+    if (!db) return {};
+    return db.getConversationSyncState(provider);
   });
   ipcMain.on('crawler-log', (event, entry) => {
     log('crawler', entry.message, entry.data);
@@ -300,6 +607,117 @@ app.whenReady().then(() => {
     };
   });
 
+  // ---- Landscape ----
+
+  ipcMain.handle('get-landscape', (_, opts) => {
+    const { range = '4w', group = 'topic', weekOffset = 0 } = opts || {};
+    const { start, end } = resolveRange(range, weekOffset);
+    const landscape = db.getLandscape({ start, end, group });
+    return {
+      ...landscape,
+      range,
+      weekOffset,
+      threadStats: db.getUncategorizedThreadStats(),
+      recatStats: db.getRecategorizationStats(),
+    };
+  });
+
+  ipcMain.handle('get-tile-detail', (_, opts) => {
+    const { key, group = 'topic', range = '4w', weekOffset = 0 } = opts || {};
+    const { start, end } = resolveRange(range, weekOffset);
+    return db.getTileDetail({ key, group, start, end });
+  });
+
+  // On-demand LLM-generated briefing for a drilled tile. Cached in-memory
+  // so reopening a drawer is instant; cache is cleared when new data lands
+  // (see clearBriefingCache() calls next to sendToMain('landscape-updated')).
+  ipcMain.handle('get-tile-briefing', async (_, opts) => {
+    const {
+      key, group = 'topic', range = '4w', weekOffset = 0,
+      category, tone, pctOfTotal, changePct, label,
+    } = opts || {};
+    if (!key) return null;
+    const { start, end } = resolveRange(range, weekOffset);
+    const cacheKey = `${group}::${key}::${start}::${end}`;
+    const cached = briefingCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < BRIEFING_TTL_MS) return cached.data;
+
+    const apiKey = db.getConfigValue('openrouter_api_key');
+    if (!apiKey) { log('briefing', `no api key; skipping ${key}`); return null; }
+
+    const detail = db.getTileDetail({ key, group, start, end });
+    if (!detail?.stories || detail.stories.length === 0) {
+      log('briefing', `no stories for ${key}; skipping`);
+      return null;
+    }
+
+    const model = db.getConfigValue('landscape_model') || DEFAULT_LANDSCAPE_MODEL;
+    const identity = db.getUserIdentity();
+
+    log('briefing', `generating for "${key}" (${category}) · ${detail.stories.length} stories · model=${model}`);
+    try {
+      const briefing = await generateBriefing({
+        tile: {
+          label: label || key,
+          category: category || 'other',
+          tone, pctOfTotal, changePct,
+        },
+        stories: detail.stories,
+        people: detail.people,
+        apiKey,
+        model,
+        identity,
+      });
+      if (briefing) {
+        briefingCache.set(cacheKey, { data: briefing, at: Date.now() });
+        log('briefing', `✓ "${key}" done · ${briefing.briefing.length} chars · fields: ${Object.keys(briefing).join(', ')}`);
+      } else {
+        log('briefing', `✗ "${key}" returned null (LLM returned empty or too short)`);
+      }
+      return briefing;
+    } catch (err) {
+      log('briefing', `generate failed for ${key}`, { err: err.message });
+      return null;
+    }
+  });
+
+  // Kick off thread-level categorization manually (used by the "Read threads" button)
+  ipcMain.handle('recategorize-moments', async () => {
+    runThreadCategorization().catch(err => log('categorize', `Error: ${err.message}`));
+    return { ok: true, started: true };
+  });
+
+  // Wipe all topic/category/tone/summary and kick off a fresh thread pass.
+  // Used after prompt changes to regenerate the landscape with the new voice.
+  ipcMain.handle('reread-all-threads', async () => {
+    const wiped = db.resetAllThreadCategorizations();
+    log('categorize', `Reset ${wiped} moments — starting fresh thread pass`);
+    runThreadCategorization().catch(err => log('categorize', `Error: ${err.message}`));
+    return { ok: true, wiped };
+  });
+
+  // Expose available models for the Settings UI model picker
+  ipcMain.handle('get-available-models', () => AVAILABLE_MODELS);
+
+  // User identity — who's the narrator of these conversations
+  ipcMain.handle('get-user-identity', () => db.getUserIdentity());
+
+  ipcMain.handle('set-user-identity', async (_, { name, aliases }) => {
+    db.setConfig('user_name', (name || '').trim());
+    db.setConfig('user_aliases', (aliases || '').trim());
+    // Purge any existing pollution: entities matching the new identity,
+    // threads where the user became the topic.
+    const purged = db.purgeUserAsEntity();
+    log('main', `Identity updated`, { name, ...purged });
+    clearBriefingCache();
+    sendToMain('landscape-updated');
+    // Trigger re-categorization for the threads we just wiped
+    if (purged.resetThreads > 0) {
+      scheduleThreadCategorization();
+    }
+    return { ok: true, ...purged };
+  });
+
   // ---- Connector Controls ----
 
   ipcMain.handle('open-connector', (_, provider) => {
@@ -320,6 +738,94 @@ app.whenReady().then(() => {
     const isOpen = connectorWindows[provider] && !connectorWindows[provider].isDestroyed();
     const enabled = db.getConfigValue(`connector_${provider}`);
     return { provider, isOpen, enabled: enabled === 'enabled' };
+  });
+
+  /**
+   * Manual sync trigger. Opens a hidden connector window, lets the existing
+   * crawler run in the persistent (already-logged-in) partition, and resolves
+   * with how many messages were actually new vs. skipped as duplicates.
+   *
+   * Safe to call repeatedly — only one sync per provider runs at a time.
+   * If a visible connector window is already open, we just tap into the
+   * active session instead of spawning a second one.
+   */
+  ipcMain.handle('sync-provider', async (_, provider) => {
+    if (!provider || !['claude', 'chatgpt'].includes(provider)) {
+      return { ok: false, error: 'Unknown provider' };
+    }
+    if (syncSessions.has(provider)) {
+      log('sync', `${provider} sync already in progress — ignoring duplicate trigger`);
+      return { ok: false, error: 'Sync already running' };
+    }
+
+    log('sync', `manual sync requested for ${provider}`);
+    sendToMain('sync-progress', { provider, stage: 'starting', added: 0, skipped: 0 });
+
+    return new Promise((resolve) => {
+      const session = {
+        provider,
+        added: 0,
+        skipped: 0,
+        startedAt: Date.now(),
+        resolve,
+        hiddenWin: null,
+        timeout: null,
+      };
+      session.timeout = setTimeout(() => {
+        log('sync', `${provider} sync timed out after ${SYNC_TIMEOUT_MS}ms`);
+        finishSync(provider, { ok: false, error: 'Sync timed out. Try opening the connector manually.' });
+      }, SYNC_TIMEOUT_MS);
+      syncSessions.set(provider, session);
+
+      // If a visible connector window is already open, let it drive the sync —
+      // we just piggyback on its message stream.
+      if (connectorWindows[provider] && !connectorWindows[provider].isDestroyed()) {
+        log('sync', `${provider} connector already open — attaching to live session`);
+        return;
+      }
+
+      // Otherwise spawn a hidden window with the persistent login partition
+      const urls = { claude: 'https://claude.ai', chatgpt: 'https://chatgpt.com' };
+      const win = new BrowserWindow({
+        width: 1000,
+        height: 750,
+        show: false,
+        webPreferences: {
+          preload: path.join(__dirname, '..', 'channels', 'browser-preload.js'),
+          contextIsolation: false,
+          partition: `persist:${provider}`,
+        },
+      });
+      session.hiddenWin = win;
+      connectorWindows[provider] = win;
+
+      // If the crawler hasn't started actually crawling within 20s, the user
+      // probably needs to log in. Reveal the window so they can — otherwise
+      // we'd hang silently behind a black screen. Cleared as soon as a
+      // `crawling` status arrives.
+      session.revealTimer = setTimeout(() => {
+        if (!syncSessions.has(provider)) return;
+        if (win.isDestroyed() || win.isVisible()) return;
+        log('sync', `${provider}: 20s idle, revealing window so user can sign in`);
+        win.show();
+        sendToMain('sync-progress', {
+          provider, stage: 'connecting',
+          message: 'Please sign in to the window that just opened.',
+          added: session.added, skipped: session.skipped,
+        });
+      }, 20000);
+
+      win.on('closed', () => {
+        if (connectorWindows[provider] === win) delete connectorWindows[provider];
+        // If the window dies before the crawler sends crawl_complete, we
+        // treat that as an error so the Promise never hangs.
+        if (syncSessions.has(provider)) {
+          finishSync(provider, { ok: false, error: 'Sync window closed unexpectedly' });
+        }
+      });
+
+      win.loadURL(urls[provider]);
+    });
   });
 
   // ---- Import (secondary option for historical data) ----
@@ -347,7 +853,12 @@ app.whenReady().then(() => {
 
       const moments = processConversationImport(data, sendProgress);
       sendProgress({ stage: 'saving', message: `Saving ${moments.length} moments...` });
-      for (const moment of moments) db.insertMoment(moment);
+      let importAdded = 0, importSkipped = 0;
+      for (const moment of moments) {
+        const res = db.insertMoment(moment);
+        if (res.inserted) importAdded++; else importSkipped++;
+      }
+      log('main', `JSON import: +${importAdded} new, ${importSkipped} duplicates skipped`);
 
       sendProgress({ stage: 'analyzing', message: 'Running AI analysis...', total: moments.length });
 
@@ -355,18 +866,22 @@ app.whenReady().then(() => {
       const batchSize = 20;
       let processed = 0;
 
+      const analysisModel = db.getConfigValue('analysis_model') || DEFAULT_ANALYSIS_MODEL;
+      const identity = db.getUserIdentity();
       for (let i = 0; i < unprocessedMoments.length; i += batchSize) {
         const batch = unprocessedMoments.slice(i, i + batchSize);
         const existingEntities = db.getEntities();
         const recentPatterns = db.getPatterns();
 
         try {
-          const analysis = await processBatch(batch, existingEntities, recentPatterns, apiKey);
-          if (analysis.entities) analysis.entities.forEach(e => db.upsertEntity(e));
+          const analysis = await processBatch(batch, existingEntities, recentPatterns, apiKey, analysisModel, identity);
+          if (analysis.entities) analysis.entities.forEach(e => {
+            try { db.upsertEntity(e); } catch {}
+          });
           if (analysis.patterns) analysis.patterns.forEach(p => db.insertPattern(p));
           if (analysis.emotions) analysis.emotions.forEach(e => db.insertEmotion(e));
           if (analysis.decisions) analysis.decisions.forEach(d => db.insertDecision(d));
-          batch.forEach(m => db.markMomentProcessed(m.id));
+          for (const m of batch) db.markMomentProcessed(m.id);
         } catch (err) {
           console.error('Batch processing error:', err.message);
         }

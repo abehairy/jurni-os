@@ -328,22 +328,49 @@ async function crawlClaudeAPI() {
 
   if (allConvos.length === 0) return false;
 
-  sendStatus('crawling', `Fetching messages from ${allConvos.length} conversations...`);
+  // Smart sync: ask main what we already have so we can skip threads whose
+  // Claude-side updated_at is older than our latest stored message for them.
+  // One IPC call per crawl, tiny payload (~N uuids). Falls back to full fetch
+  // if the IPC isn't available (older main process, web dev mode).
+  let syncState = {};
+  try {
+    syncState = await ipcRenderer.invoke('get-conversation-sync-state', 'claude') || {};
+    clog(`Smart sync: have ${Object.keys(syncState).length} conversations already in DB`);
+  } catch (e) {
+    clog('Smart sync state unavailable, will fetch all conversations', { err: e.message });
+  }
 
-  // Fetch each conversation
+  sendStatus('crawling', `Checking ${allConvos.length} conversations...`, {
+    total: allConvos.length, processed: 0, fetched: 0, threadsSkipped: 0,
+  });
+
+  let fetched = 0, threadsSkipped = 0;
   for (let i = 0; i < allConvos.length; i++) {
     const convo = allConvos[i];
     const id = convo.uuid || convo.id;
     const name = convo.name || convo.title || 'Untitled';
-    const detailUrl = `/api/organizations/${orgId}/chat_conversations/${id}`;
 
+    // Skip if we have it AND it hasn't been updated since we last synced.
+    // ISO timestamp compare is a string compare — works correctly because
+    // both sides use the same format from Claude's own clock.
+    const known = syncState[id];
+    if (known && convo.updated_at && known.maxTs >= convo.updated_at) {
+      threadsSkipped++;
+      if ((i + 1) % 10 === 0 || i === allConvos.length - 1) {
+        sendStatus('crawling', `Checked ${i + 1}/${allConvos.length} — skipped ${threadsSkipped} up-to-date`, {
+          total: allConvos.length, processed: i + 1, fetched, threadsSkipped,
+        });
+      }
+      continue;
+    }
+
+    const detailUrl = `/api/organizations/${orgId}/chat_conversations/${id}`;
     const resp = await safeFetch(detailUrl);
     if (!resp) { clog(`Failed to fetch conversation ${id}`); continue; }
     const detail = await resp.json().catch(() => null);
     if (!detail) { clog(`Failed to parse conversation ${id}`); continue; }
 
     const messages = detail.chat_messages || detail.messages || [];
-    if (i < 3) clog(`Conversation "${name}" has ${messages.length} messages`, { keys: Object.keys(detail) });
     for (const msg of messages) {
       const role = msg.sender || msg.role || 'unknown';
       const text = extractClaudeText(msg);
@@ -351,15 +378,20 @@ async function crawlClaudeAPI() {
       const ts = msg.created_at || msg.timestamp || convo.created_at;
       captureMessage(text, ts, name, 'crawl', role);
     }
+    fetched++;
 
     if ((i + 1) % 3 === 0 || i === allConvos.length - 1) {
-      sendStatus('crawling', `Processed ${i + 1}/${allConvos.length} conversations — ${capturedCount} messages`);
-      setStatusText(`fetching... ${i + 1}/${allConvos.length} conversations`);
+      sendStatus('crawling',
+        `Processed ${i + 1}/${allConvos.length} — fetched ${fetched}, skipped ${threadsSkipped} up-to-date`,
+        { total: allConvos.length, processed: i + 1, fetched, threadsSkipped }
+      );
+      setStatusText(`fetching... ${i + 1}/${allConvos.length}`);
     }
     await sleep(300);
   }
 
-  return capturedCount > 0;
+  clog(`Smart sync summary: fetched ${fetched}, skipped ${threadsSkipped} already-current`);
+  return capturedCount > 0 || fetched > 0;
 }
 
 function extractClaudeText(msg) {
@@ -683,11 +715,12 @@ function clog(message, data) {
   ipcRenderer.send('crawler-log', { message, data });
 }
 
-function sendStatus(status, message) {
-  clog(`Status: ${status} — ${message}`);
+function sendStatus(status, message, data) {
+  clog(`Status: ${status} — ${message}`, data);
   ipcRenderer.send('browser-status', {
     provider, status, message, capturedCount,
     url: window.location.href,
+    data: data || null,
   });
 }
 

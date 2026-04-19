@@ -9,10 +9,17 @@ export default function People({ api }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getEntities('person').then(data => {
-      setEntities(data);
-      setLoading(false);
-    });
+    let cancelled = false;
+    const load = () => {
+      api.getEntities('person').then(data => {
+        if (cancelled) return;
+        setEntities(data);
+        setLoading(false);
+      });
+    };
+    load();
+    const off = api.onLandscapeUpdated?.(load);
+    return () => { cancelled = true; off?.(); };
   }, []);
 
   async function handleSelect(entity) {

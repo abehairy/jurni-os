@@ -1,6 +1,17 @@
 const BetterSqlite3 = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+
+/**
+ * Deterministic short hash of a message body. Used as part of the dedup
+ * key `(source, timestamp, content_hash)` so re-crawls and re-imports are
+ * idempotent. SHA-1 truncated to 16 hex chars — collision probability is
+ * negligible at any realistic personal-data scale.
+ */
+function hashContent(str) {
+  return crypto.createHash('sha1').update(String(str || '')).digest('hex').slice(0, 16);
+}
 
 class Database {
   constructor(jurniDir) {
@@ -27,6 +38,10 @@ class Database {
         raw_content TEXT NOT NULL,
         metadata TEXT DEFAULT '{}',
         processed INTEGER DEFAULT 0,
+        topic TEXT,
+        category TEXT,
+        tone TEXT,
+        summary TEXT,
         created_at TEXT DEFAULT (datetime('now'))
       );
 
@@ -101,6 +116,64 @@ class Database {
       CREATE INDEX IF NOT EXISTS idx_emotions_timestamp ON emotions(timestamp);
       CREATE INDEX IF NOT EXISTS idx_scores_date ON scores(date);
     `);
+
+    // Migrations: add landscape columns if they don't exist (for older DBs)
+    const cols = this.db.prepare("PRAGMA table_info(moments)").all().map(c => c.name);
+    if (!cols.includes('topic')) this.db.exec('ALTER TABLE moments ADD COLUMN topic TEXT');
+    if (!cols.includes('category')) this.db.exec('ALTER TABLE moments ADD COLUMN category TEXT');
+    if (!cols.includes('tone')) this.db.exec('ALTER TABLE moments ADD COLUMN tone TEXT');
+    if (!cols.includes('summary')) this.db.exec('ALTER TABLE moments ADD COLUMN summary TEXT');
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_moments_topic ON moments(topic)');
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_moments_category ON moments(category)');
+
+    // --- Dedup migration (one-time per DB) ------------------------------
+    // The connector window used to insert every captured message on every
+    // re-crawl because there was no uniqueness constraint. Here we:
+    //   1. add a content_hash column
+    //   2. backfill hashes
+    //   3. delete duplicates (and their orphaned emotions)
+    //   4. create a UNIQUE index that makes insertMoment idempotent forever
+    if (!cols.includes('content_hash')) {
+      const runMigration = this.db.transaction(() => {
+        this.db.exec('ALTER TABLE moments ADD COLUMN content_hash TEXT');
+
+        const rows = this.db.prepare('SELECT id, raw_content FROM moments').all();
+        const upd = this.db.prepare('UPDATE moments SET content_hash = ? WHERE id = ?');
+        for (const r of rows) upd.run(hashContent(r.raw_content), r.id);
+
+        const before = this.db.prepare('SELECT COUNT(*) AS c FROM moments').get().c;
+        const dupIds = this.db.prepare(`
+          SELECT id FROM moments
+          WHERE id NOT IN (
+            SELECT MIN(id) FROM moments
+            GROUP BY source, timestamp, content_hash
+          )
+        `).all().map(r => r.id);
+
+        if (dupIds.length > 0) {
+          const delEmotion = this.db.prepare('DELETE FROM emotions WHERE moment_id = ?');
+          const delMoment = this.db.prepare('DELETE FROM moments WHERE id = ?');
+          for (const id of dupIds) { delEmotion.run(id); delMoment.run(id); }
+        }
+
+        this.db.exec(
+          'CREATE UNIQUE INDEX IF NOT EXISTS idx_moments_dedup ' +
+          'ON moments(source, timestamp, content_hash)'
+        );
+
+        console.log(
+          `[db] dedup migration: ${before} → ${before - dupIds.length} moments ` +
+          `(${dupIds.length} duplicates removed)`
+        );
+      });
+      runMigration();
+    } else {
+      // Always make sure the unique index exists on already-migrated DBs
+      this.db.exec(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_moments_dedup ' +
+        'ON moments(source, timestamp, content_hash)'
+      );
+    }
   }
 
   // --- Config ---
@@ -134,17 +207,24 @@ class Database {
   // --- Moments ---
 
   insertMoment(moment) {
+    // INSERT OR IGNORE + UNIQUE(source, timestamp, content_hash) gives us
+    // idempotent ingestion: re-running the Claude crawler (or re-importing
+    // the same JSON) will not duplicate existing rows.
+    // Returns { id, inserted } — id is null when the row was a duplicate.
     const stmt = this.db.prepare(`
-      INSERT INTO moments (timestamp, source, raw_content, metadata)
-      VALUES (?, ?, ?, ?)
+      INSERT OR IGNORE INTO moments
+        (timestamp, source, raw_content, metadata, content_hash)
+      VALUES (?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
       moment.timestamp,
       moment.source,
       moment.raw_content,
-      JSON.stringify(moment.metadata || {})
+      JSON.stringify(moment.metadata || {}),
+      hashContent(moment.raw_content)
     );
-    return result.lastInsertRowid;
+    if (result.changes === 0) return { id: null, inserted: false };
+    return { id: result.lastInsertRowid, inserted: true };
   }
 
   getMoments(filters = {}) {
@@ -180,8 +260,207 @@ class Database {
       .map(r => ({ ...r, metadata: JSON.parse(r.metadata || '{}') }));
   }
 
-  markMomentProcessed(id) {
-    this.db.prepare('UPDATE moments SET processed = 1 WHERE id = ?').run(id);
+  /**
+   * For smart sync: returns { [conversationUuid]: { maxTs, count } } for a
+   * given provider. The crawler uses this to skip re-fetching conversations
+   * whose `updated_at` from the Claude API is older than our latest stored
+   * message — turning a full re-sync into a metadata-only walk.
+   *
+   * UUID is parsed from metadata.url (format: .../chat/<uuid>) — no schema
+   * change needed.
+   */
+  getConversationSyncState(provider) {
+    const rows = this.db.prepare(`
+      SELECT metadata, timestamp
+      FROM moments
+      WHERE source = 'conversation'
+        AND json_extract(metadata, '$.provider') = ?
+    `).all(provider);
+
+    const state = {};
+    const uuidRe = /\/chat\/([0-9a-f-]{36})/i;
+    for (const r of rows) {
+      let md;
+      try { md = JSON.parse(r.metadata || '{}'); } catch { continue; }
+      let uuid = md.conversation_uuid;
+      if (!uuid && md.url) {
+        const m = md.url.match(uuidRe);
+        if (m) uuid = m[1];
+      }
+      if (!uuid) continue;
+      const existing = state[uuid];
+      if (!existing) {
+        state[uuid] = { maxTs: r.timestamp, count: 1 };
+      } else {
+        existing.count += 1;
+        if (r.timestamp > existing.maxTs) existing.maxTs = r.timestamp;
+      }
+    }
+    return state;
+  }
+
+  markMomentProcessed(id, landscape) {
+    if (landscape) {
+      this.db.prepare(`
+        UPDATE moments
+        SET processed = 1, topic = ?, category = ?, tone = ?, summary = ?
+        WHERE id = ?
+      `).run(
+        landscape.topic || null,
+        landscape.category || null,
+        landscape.tone || null,
+        landscape.summary || null,
+        id
+      );
+    } else {
+      this.db.prepare('UPDATE moments SET processed = 1 WHERE id = ?').run(id);
+    }
+  }
+
+  // Set topic/category/tone/summary without flipping processed (for re-categorization passes)
+  updateMomentLandscape(id, landscape) {
+    this.db.prepare(`
+      UPDATE moments SET topic = ?, category = ?, tone = ?, summary = ? WHERE id = ?
+    `).run(
+      landscape.topic || null,
+      landscape.category || null,
+      landscape.tone || null,
+      landscape.summary || null,
+      id
+    );
+  }
+
+  // Moments that have been processed but have no category tag yet (need recategorization)
+  getUncategorizedMoments(limit = 50) {
+    return this.db.prepare(`
+      SELECT * FROM moments
+      WHERE processed = 1 AND (category IS NULL OR category = '')
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `).all(limit).map(r => ({ ...r, metadata: JSON.parse(r.metadata || '{}') }));
+  }
+
+  // ---------- Thread-level operations (for Life Landscape categorization) ----------
+
+  /**
+   * Return conversation threads that still have at least one uncategorized
+   * moment. Ordered by most-recently-active first. Each thread includes
+   * all of its moments in chronological order.
+   *
+   * @param {number} limit  max number of threads to return
+   */
+  getUncategorizedThreads(limit = 10) {
+    const threadRows = this.db.prepare(`
+      SELECT json_extract(metadata, '$.conversation_name') as title,
+             COUNT(*) as total_messages,
+             MAX(timestamp) as last_active,
+             MIN(timestamp) as first_active
+      FROM moments
+      WHERE source = 'conversation'
+        AND json_extract(metadata, '$.conversation_name') IS NOT NULL
+        AND id IN (
+          SELECT id FROM moments
+          WHERE source = 'conversation' AND (category IS NULL OR category = '')
+        )
+      GROUP BY title
+      ORDER BY last_active DESC
+      LIMIT ?
+    `).all(limit);
+
+    return threadRows.map(row => {
+      const messages = this.db.prepare(`
+        SELECT id, timestamp, raw_content, metadata
+        FROM moments
+        WHERE source = 'conversation'
+          AND json_extract(metadata, '$.conversation_name') = ?
+        ORDER BY timestamp ASC
+      `).all(row.title).map(m => ({
+        ...m,
+        metadata: JSON.parse(m.metadata || '{}'),
+      }));
+
+      return {
+        title: row.title,
+        messageCount: row.total_messages,
+        lastActive: row.last_active,
+        firstActive: row.first_active,
+        messages,
+      };
+    });
+  }
+
+  /**
+   * Apply a categorization to every moment in a thread.
+   * Only touches moments that haven't been manually set (or that were null).
+   */
+  applyThreadCategorization(conversationName, { topic, category, tone, summary }) {
+    const result = this.db.prepare(`
+      UPDATE moments
+      SET topic = ?, category = ?, tone = ?, summary = ?
+      WHERE source = 'conversation'
+        AND json_extract(metadata, '$.conversation_name') = ?
+    `).run(
+      topic || null,
+      category || null,
+      tone || null,
+      summary || null,
+      conversationName,
+    );
+    return result.changes;
+  }
+
+  /**
+   * Undo the damage from a prior failed run. Any thread where every moment
+   * has category='other', no topic, no summary, no tone is almost certainly
+   * the result of an error fallback (not a legitimate 'other' classification
+   * — the LLM would have produced at least a summary). Reset them to null
+   * so they get another shot.
+   */
+  resetLikelyFailedCategorizations() {
+    const result = this.db.prepare(`
+      UPDATE moments
+      SET topic = NULL, category = NULL, tone = NULL, summary = NULL
+      WHERE source = 'conversation'
+        AND category = 'other'
+        AND (topic IS NULL OR topic = '')
+        AND (summary IS NULL OR summary = '')
+        AND (tone IS NULL OR tone = '')
+    `).run();
+    return result.changes;
+  }
+
+  /**
+   * Wipe all thread categorizations so they get re-read with the current
+   * prompt. Use this when the prompt changes significantly and you want
+   * existing data regenerated rather than waiting for new ingestion.
+   */
+  resetAllThreadCategorizations() {
+    const result = this.db.prepare(`
+      UPDATE moments
+      SET topic = NULL, category = NULL, tone = NULL, summary = NULL
+      WHERE source = 'conversation'
+    `).run();
+    return result.changes;
+  }
+
+  /**
+   * Count of threads that still need categorization (for progress UI).
+   */
+  getUncategorizedThreadStats() {
+    const pending = this.db.prepare(`
+      SELECT COUNT(DISTINCT json_extract(metadata, '$.conversation_name')) as c
+      FROM moments
+      WHERE source = 'conversation'
+        AND json_extract(metadata, '$.conversation_name') IS NOT NULL
+        AND (category IS NULL OR category = '')
+    `).get().c;
+    const total = this.db.prepare(`
+      SELECT COUNT(DISTINCT json_extract(metadata, '$.conversation_name')) as c
+      FROM moments
+      WHERE source = 'conversation'
+        AND json_extract(metadata, '$.conversation_name') IS NOT NULL
+    `).get().c;
+    return { pending, total, done: total - pending };
   }
 
   // --- Entities ---
@@ -194,14 +473,137 @@ class Database {
       params.push(type);
     }
     query += ' ORDER BY mention_count DESC';
-    return this.db.prepare(query).all(...params).map(r => ({
+    const { normalized } = this.getUserIdentity();
+    return this.db.prepare(query).all(...params)
+      .filter(r => !(r.type === 'person' && normalized.has(this._normalizeName(r.name))))
+      .map(r => ({
       ...r,
       sentiment_trajectory: JSON.parse(r.sentiment_trajectory || '[]'),
       metadata: JSON.parse(r.metadata || '{}'),
     }));
   }
 
+  /**
+   * Normalize a name for matching: lowercase, strip accents, collapse
+   * whitespace, drop surrounding punctuation. So "Ahmed  Behairy.",
+   * "AHMED BEHAIRY", and "Áhmed Behairy" all normalize to "ahmed behairy".
+   */
+  _normalizeName(s) {
+    if (s == null) return '';
+    return String(s)
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')        // strip accents
+      .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')   // strip punctuation (keep apostrophe, hyphen)
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * The user's own identity — name + aliases. The source of truth for
+   * "who is the narrator of these conversations?". Without this, the user's
+   * own name leaks into entities, topics, and the People landscape.
+   *
+   * Returns both the raw aliases and a pre-normalized set for fast matching.
+   */
+  getUserIdentity() {
+    const name = (this.getConfigValue('user_name') || '').trim();
+    const aliasesRaw = (this.getConfigValue('user_aliases') || '').trim();
+    if (!name) return { name: null, aliases: [], normalized: new Set() };
+    const aliases = new Set([name]);
+    aliasesRaw.split(',').map(s => s.trim()).filter(Boolean).forEach(a => aliases.add(a));
+    // Also add name tokens as aliases so "Ahmed Behairy" matches "Ahmed" alone
+    name.split(/\s+/).filter(t => t.length >= 3).forEach(t => aliases.add(t));
+    const normalized = new Set(
+      Array.from(aliases).map(a => this._normalizeName(a)).filter(Boolean)
+    );
+    return { name, aliases: Array.from(aliases), normalized };
+  }
+
+  isUserAlias(candidate) {
+    if (!candidate) return false;
+    const { normalized } = this.getUserIdentity();
+    if (normalized.size === 0) return false;
+    return normalized.has(this._normalizeName(candidate));
+  }
+
+  /**
+   * Purge the user's own name from places it shouldn't be. Called after
+   * the user sets or changes their identity in Settings.
+   *
+   * Removes entity rows matching any user alias, and nulls out
+   * topic/category/tone/summary on any thread whose topic was the user
+   * (so it gets re-read properly as personal/introspective content).
+   */
+  /**
+   * Delete any person entities whose "name" is an email address or handle.
+   * These are identifiers, not names — they shouldn't appear in People tiles.
+   * Called once on startup to clean up historical data; `upsertEntity` blocks
+   * new ones from being inserted.
+   */
+  purgeEmailPersonEntities() {
+    const result = this.db.prepare(
+      `DELETE FROM entities WHERE type = 'person' AND name LIKE '%@%'`
+    ).run();
+    return result.changes;
+  }
+
+  purgeUserAsEntity() {
+    const { normalized } = this.getUserIdentity();
+    if (normalized.size === 0) return { removedEntities: 0, resetThreads: 0 };
+
+    // JS-side normalized matching — tolerant of casing, whitespace, accents,
+    // punctuation. SQL LOWER() alone misses "Ahmed Behairy." vs "Ahmed Behairy".
+    const personRows = this.db.prepare(`SELECT id, name FROM entities WHERE type = 'person'`).all();
+    const idsToDelete = personRows
+      .filter(r => normalized.has(this._normalizeName(r.name)))
+      .map(r => r.id);
+
+    let removedEntities = 0;
+    if (idsToDelete.length > 0) {
+      const stmt = this.db.prepare(`DELETE FROM entities WHERE id = ?`);
+      const tx = this.db.transaction(ids => ids.forEach(id => stmt.run(id)));
+      tx(idsToDelete);
+      removedEntities = idsToDelete.length;
+    }
+
+    // Any thread whose topic was the user's name gets its landscape fields
+    // wiped, so the next categorization pass re-classifies it correctly
+    // (almost certainly as 'mind' — self-reflection).
+    const topicRows = this.db.prepare(`
+      SELECT DISTINCT topic FROM moments
+      WHERE source = 'conversation' AND topic IS NOT NULL AND topic != ''
+    `).all();
+    const topicsToReset = topicRows
+      .map(r => r.topic)
+      .filter(t => normalized.has(this._normalizeName(t)));
+
+    let resetThreads = 0;
+    if (topicsToReset.length > 0) {
+      const stmt = this.db.prepare(`
+        UPDATE moments SET topic = NULL, category = NULL, tone = NULL, summary = NULL
+        WHERE source = 'conversation' AND topic = ?
+      `);
+      const tx = this.db.transaction(topics => {
+        for (const t of topics) resetThreads += stmt.run(t).changes;
+      });
+      tx(topicsToReset);
+    }
+
+    return { removedEntities, resetThreads };
+  }
+
   upsertEntity(entity) {
+    // Never store the user as a person entity
+    if (entity.type === 'person' && this.isUserAlias(entity.name)) {
+      return null;
+    }
+    // Emails and handles are identifiers, not person names. They belong on a
+    // person (as strong keys for identity resolution, when we get there) —
+    // never as standalone person entities that pollute the People view.
+    if (entity.type === 'person' && /@/.test(entity.name || '')) {
+      return null;
+    }
     const existing = this.db.prepare('SELECT * FROM entities WHERE name = ? AND type = ?')
       .get(entity.name, entity.type);
 
@@ -391,6 +793,317 @@ class Database {
       scores.routine,
       scores.professional
     );
+  }
+
+  // --- Landscape ---
+
+  /**
+   * Build the Life Landscape for a time window.
+   * Returns tiles (topics) with counts, change %, category, tone, and a sparkline.
+   *
+   * @param {Object} opts
+   * @param {string} opts.start ISO timestamp (inclusive)
+   * @param {string} opts.end ISO timestamp (exclusive)
+   * @param {string} [opts.group='topic']  'topic' | 'category' | 'people'
+   * @returns {{ period: {start,end}, tiles: Array }}
+   */
+  getLandscape({ start, end, group = 'topic' }) {
+    const rangeMs = new Date(end).getTime() - new Date(start).getTime();
+    const prevStart = new Date(new Date(start).getTime() - rangeMs).toISOString();
+
+    // Helper: split range into 12 equal buckets for sparkline
+    const bucketCount = 12;
+    const bucketMs = rangeMs / bucketCount;
+
+    if (group === 'category') {
+      const rows = this.db.prepare(`
+        SELECT COALESCE(category, 'other') as key, 'category' as kind,
+               COUNT(*) as count
+        FROM moments
+        WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+          AND category IS NOT NULL
+        GROUP BY key
+        ORDER BY count DESC
+      `).all(start, end);
+
+      const total = rows.reduce((s, r) => s + r.count, 0) || 1;
+      return {
+        period: { start, end, group },
+        total,
+        tiles: rows.map(r => this._enrichTile(r, { start, end, prevStart, bucketMs, total, group })),
+      };
+    }
+
+    if (group === 'people') {
+      const { normalized } = this.getUserIdentity();
+      const rows = this.db.prepare(`
+        SELECT name as key, type, mention_count as count, metadata
+        FROM entities
+        WHERE type = 'person'
+        ORDER BY mention_count DESC
+        LIMIT 40
+      `).all()
+        .filter(r => !normalized.has(this._normalizeName(r.key)))
+        .slice(0, 20);
+      const total = rows.reduce((s, r) => s + r.count, 0) || 1;
+      return {
+        period: { start, end, group },
+        total,
+        tiles: rows.map(r => ({
+          key: r.key,
+          label: r.key,
+          category: 'peers',
+          count: r.count,
+          pctOfTotal: r.count / total,
+          changePct: 0,
+          tone: null,
+          summary: null,
+          spark: [],
+        })),
+      };
+    }
+
+    // Default: group by topic. Same topic across batches may end up with
+    // slightly different categories/tones — collapse to the most common.
+    const rows = this.db.prepare(`
+      WITH topic_totals AS (
+        SELECT topic, COUNT(*) as count
+        FROM moments
+        WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+          AND topic IS NOT NULL AND topic != '' AND LOWER(topic) NOT IN ('unclear', 'other', 'unknown')
+        GROUP BY topic
+      ),
+      topic_category AS (
+        SELECT topic,
+               category,
+               ROW_NUMBER() OVER (PARTITION BY topic ORDER BY COUNT(*) DESC) as rn
+        FROM moments
+        WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+          AND topic IS NOT NULL AND category IS NOT NULL
+        GROUP BY topic, category
+      ),
+      topic_latest AS (
+        SELECT topic, MAX(tone) as tone, MAX(summary) as summary
+        FROM moments
+        WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+          AND topic IS NOT NULL
+        GROUP BY topic
+      )
+      SELECT t.topic as key,
+             COALESCE(c.category, 'other') as category,
+             t.count,
+             l.tone,
+             l.summary
+      FROM topic_totals t
+      LEFT JOIN topic_category c ON c.topic = t.topic AND c.rn = 1
+      LEFT JOIN topic_latest l ON l.topic = t.topic
+      ORDER BY t.count DESC
+      LIMIT 20
+    `).all(start, end, start, end, start, end);
+
+    const total = rows.reduce((s, r) => s + r.count, 0) || 1;
+    return {
+      period: { start, end, group },
+      total,
+      tiles: rows.map(r => this._enrichTile(r, { start, end, prevStart, bucketMs, total, group })),
+    };
+  }
+
+  _enrichTile(row, { start, end, prevStart, bucketMs, total, group }) {
+    const key = row.key;
+    const isCategory = group === 'category';
+
+    // Previous period count (same length, immediately prior)
+    let prevCount = 0;
+    if (isCategory) {
+      prevCount = this.db.prepare(`
+        SELECT COUNT(*) as c FROM moments
+        WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+          AND COALESCE(category, 'other') = ?
+      `).get(prevStart, start, key).c;
+    } else {
+      prevCount = this.db.prepare(`
+        SELECT COUNT(*) as c FROM moments
+        WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+          AND topic = ?
+      `).get(prevStart, start, key).c;
+    }
+
+    // Cap change at ±300% so a tile with 1 moment last period and 80 this
+    // period doesn't render as "▲ 7900%" which carries no useful info and
+    // distracts from the real pattern. If prev was zero, treat as "new".
+    const rawChange = prevCount === 0
+      ? (row.count > 0 ? 1 : 0)
+      : (row.count - prevCount) / prevCount;
+    const changePct = Math.max(-3, Math.min(3, rawChange));
+    const isNew = prevCount === 0 && row.count > 0;
+
+    // Sparkline: count per bucket across the range
+    const spark = new Array(12).fill(0);
+    const startMs = new Date(start).getTime();
+    const rows = isCategory
+      ? this.db.prepare(`
+          SELECT timestamp FROM moments
+          WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+            AND COALESCE(category, 'other') = ?
+        `).all(start, end, key)
+      : this.db.prepare(`
+          SELECT timestamp FROM moments
+          WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+            AND topic = ?
+        `).all(start, end, key);
+
+    for (const r of rows) {
+      const idx = Math.min(11, Math.floor((new Date(r.timestamp).getTime() - startMs) / bucketMs));
+      if (idx >= 0 && idx < 12) spark[idx]++;
+    }
+
+    // For a category tile, the useful signal is "what specifically in this
+    // domain?" — so we attach the top topics inside it and the dominant
+    // tone across them. This is the content of the tile; the category name
+    // alone is just a header.
+    let subTopics = null;
+    let tone = row.tone || null;
+    let summary = row.summary || null;
+    if (isCategory) {
+      subTopics = this.db.prepare(`
+        SELECT topic, COUNT(*) as count
+        FROM moments
+        WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+          AND COALESCE(category, 'other') = ?
+          AND topic IS NOT NULL AND topic != ''
+        GROUP BY topic
+        ORDER BY count DESC
+        LIMIT 6
+      `).all(start, end, key).map(t => ({
+        topic: t.topic,
+        weight: t.count / row.count,
+      }));
+
+      // Dominant tone across this domain (mode)
+      const toneRow = this.db.prepare(`
+        SELECT tone, COUNT(*) as c FROM moments
+        WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+          AND COALESCE(category, 'other') = ?
+          AND tone IS NOT NULL AND tone != ''
+        GROUP BY tone
+        ORDER BY c DESC
+        LIMIT 1
+      `).get(start, end, key);
+      tone = toneRow?.tone || null;
+      summary = null; // Category tiles show subTopics, not a summary line
+    }
+
+    return {
+      key,
+      label: key,
+      category: isCategory ? key : row.category,
+      count: row.count,
+      pctOfTotal: row.count / total,
+      changePct,
+      tone,
+      summary,
+      subTopics,
+      isNew,
+      spark,
+    };
+  }
+
+  /**
+   * Get the stories (conversation threads) behind a tile.
+   *
+   * Returns one row per unique conversation_name within the window, with
+   * the thread's summary, tone, message count, and last-active timestamp.
+   *
+   * This is the fix for the "repetition" problem: a 50-message thread
+   * showing up as 50 separate stories. A thread IS a story.
+   */
+  getTileDetail({ key, group = 'topic', start, end }) {
+    const isCategory = group === 'category';
+    const whereClause = isCategory
+      ? "COALESCE(category, 'other') = ?"
+      : 'topic = ?';
+
+    const stories = this.db.prepare(`
+      SELECT json_extract(metadata, '$.conversation_name') as conversation_name,
+             MAX(timestamp) as last_active,
+             MIN(timestamp) as first_active,
+             COUNT(*) as message_count,
+             MAX(summary) as summary,
+             MAX(tone) as tone
+      FROM moments
+      WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+        AND ${whereClause}
+        AND json_extract(metadata, '$.conversation_name') IS NOT NULL
+      GROUP BY conversation_name
+      ORDER BY last_active DESC
+      LIMIT 8
+    `).all(start, end, key);
+
+    const { normalized: userNormalized } = this.getUserIdentity();
+    const people = this.db.prepare(`
+      SELECT e.name, COUNT(*) as mentions
+      FROM entities e
+      WHERE e.type = 'person'
+      ORDER BY mentions DESC
+      LIMIT 20
+    `).all()
+      .filter(r => !userNormalized.has(this._normalizeName(r.name)))
+      .slice(0, 8);
+
+    const total = this.db.prepare(`
+      SELECT COUNT(*) as c FROM moments
+      WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+        AND ${whereClause}
+    `).get(start, end, key).c;
+
+    const threadCount = this.db.prepare(`
+      SELECT COUNT(DISTINCT json_extract(metadata, '$.conversation_name')) as c
+      FROM moments
+      WHERE source = 'conversation' AND timestamp >= ? AND timestamp < ?
+        AND ${whereClause}
+    `).get(start, end, key).c;
+
+    return {
+      stories: stories.map(s => ({
+        when: s.last_active,
+        what: s.conversation_name || 'Thread',
+        excerpt: s.summary || `${s.message_count} messages`,
+        tone: s.tone,
+        messageCount: s.message_count,
+      })),
+      people,
+      totalMentions: total,
+      threadCount,
+    };
+  }
+
+  /**
+   * Returns the top topics seen so far, counted by distinct THREADS (not
+   * messages) so long threads don't dominate. Used to give the LLM context
+   * so it reuses exact topic names across threads.
+   */
+  getKnownTopics(limit = 40) {
+    return this.db.prepare(`
+      SELECT topic,
+             category,
+             COUNT(DISTINCT json_extract(metadata, '$.conversation_name')) as count
+      FROM moments
+      WHERE topic IS NOT NULL AND topic != ''
+      GROUP BY topic, category
+      ORDER BY count DESC
+      LIMIT ?
+    `).all(limit);
+  }
+
+  getRecategorizationStats() {
+    const total = this.db.prepare(
+      "SELECT COUNT(*) as c FROM moments WHERE source = 'conversation'"
+    ).get().c;
+    const uncategorized = this.db.prepare(
+      "SELECT COUNT(*) as c FROM moments WHERE source = 'conversation' AND (category IS NULL OR category = '')"
+    ).get().c;
+    return { total, uncategorized, categorized: total - uncategorized };
   }
 
   // --- Stats ---

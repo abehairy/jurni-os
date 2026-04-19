@@ -14,10 +14,21 @@ contextBridge.exposeInMainWorld('jurni', {
   getDashboardData: () => ipcRenderer.invoke('get-dashboard-data'),
   getEntityDetail: (id) => ipcRenderer.invoke('get-entity-detail', id),
 
+  // Landscape
+  getLandscape: (opts) => ipcRenderer.invoke('get-landscape', opts),
+  getTileDetail: (opts) => ipcRenderer.invoke('get-tile-detail', opts),
+  getTileBriefing: (opts) => ipcRenderer.invoke('get-tile-briefing', opts),
+  recategorizeMoments: () => ipcRenderer.invoke('recategorize-moments'),
+  rereadAllThreads: () => ipcRenderer.invoke('reread-all-threads'),
+  getAvailableModels: () => ipcRenderer.invoke('get-available-models'),
+  getUserIdentity: () => ipcRenderer.invoke('get-user-identity'),
+  setUserIdentity: (identity) => ipcRenderer.invoke('set-user-identity', identity),
+
   // Connectors
   openConnector: (provider) => ipcRenderer.invoke('open-connector', provider),
   closeConnector: (provider) => ipcRenderer.invoke('close-connector', provider),
   getConnectorStatus: (provider) => ipcRenderer.invoke('get-connector-status', provider),
+  syncProvider: (provider) => ipcRenderer.invoke('sync-provider', provider),
   selectPhotosFolder: () => ipcRenderer.invoke('select-photos-folder'),
 
   // Import (secondary — historical data)
@@ -60,5 +71,20 @@ contextBridge.exposeInMainWorld('jurni', {
     const handler = (_, entry) => callback(entry);
     ipcRenderer.on('log-entry', handler);
     return () => ipcRenderer.removeListener('log-entry', handler);
+  },
+  onLandscapeUpdated: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('landscape-updated', handler);
+    return () => ipcRenderer.removeListener('landscape-updated', handler);
+  },
+  onRecatProgress: (callback) => {
+    const handler = (_, p) => callback(p);
+    ipcRenderer.on('recat-progress', handler);
+    return () => ipcRenderer.removeListener('recat-progress', handler);
+  },
+  onSyncProgress: (callback) => {
+    const handler = (_, p) => callback(p);
+    ipcRenderer.on('sync-progress', handler);
+    return () => ipcRenderer.removeListener('sync-progress', handler);
   },
 });

@@ -3,14 +3,20 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Key, ArrowRight, Sparkles, AlertCircle, MessageSquare, Image,
   CalendarDays, Upload, ToggleLeft, ToggleRight, FileJson, Heart,
-  Brain, Users, Waves, Activity,
+  Brain, Users, Waves, Activity, User,
 } from 'lucide-react';
 import ScoreRing from '../components/ScoreRing';
 import DimensionBars from '../components/DimensionBars';
 
 export default function Onboarding({ api, config, onComplete }) {
-  const [step, setStep] = useState(config.openrouter_api_key ? 'connectors' : 'welcome');
+  const [step, setStep] = useState(() => {
+    if (!config.openrouter_api_key) return 'welcome';
+    if (!config.user_name) return 'identity';
+    return 'connectors';
+  });
   const [apiKey, setApiKey] = useState(config.openrouter_api_key || '');
+  const [identityName, setIdentityName] = useState(config.user_name || '');
+  const [identityAliases, setIdentityAliases] = useState(config.user_aliases || '');
 
   const [connectors, setConnectors] = useState({
     claude: { enabled: false, status: 'idle', capturedCount: 0 },
@@ -129,6 +135,15 @@ export default function Onboarding({ api, config, onComplete }) {
   const handleSaveKey = async () => {
     if (!apiKey.trim()) return;
     await api.setConfig('openrouter_api_key', apiKey.trim());
+    setStep('identity');
+  };
+
+  const handleSaveIdentity = async () => {
+    if (!identityName.trim()) return;
+    await api.setUserIdentity({
+      name: identityName.trim(),
+      aliases: identityAliases.trim(),
+    });
     setStep('connectors');
   };
 
@@ -276,6 +291,73 @@ export default function Onboarding({ api, config, onComplete }) {
                     flex items-center justify-center gap-2">
                   Continue <ArrowRight size={16} />
                 </button>
+              </div>
+            </div>
+          </FadeStep>
+        )}
+
+        {/* ---- STEP 2.5: Who You Are ---- */}
+        {step === 'identity' && (
+          <FadeStep key="identity">
+            <div className="max-w-md w-full">
+              <div className="text-center mb-8">
+                <User size={32} className="text-terracotta mx-auto mb-3" />
+                <h2 className="font-display text-2xl mb-2">Who are you?</h2>
+                <p className="text-sm text-warm-gray">
+                  Jurni reads conversations from your own point of view.
+                  Without your name, you'd show up as a stranger inside your own life.
+                </p>
+              </div>
+              <div className="glass-card p-6 space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-charcoal block mb-2">
+                    Your name
+                  </label>
+                  <input
+                    type="text"
+                    value={identityName}
+                    onChange={e => setIdentityName(e.target.value)}
+                    placeholder="e.g. Ahmed Behairy"
+                    className="w-full px-3 py-2.5 bg-white/60 border border-cream-dark rounded-lg text-sm
+                      focus:outline-none focus:ring-2 focus:ring-terracotta/30"
+                    autoFocus
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && identityName.trim()) handleSaveIdentity();
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-charcoal block mb-2">
+                    Also known as{' '}
+                    <span className="text-warm-gray/70 font-normal text-xs">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={identityAliases}
+                    onChange={e => setIdentityAliases(e.target.value)}
+                    placeholder="Beh, Behairy, Ahmed B."
+                    className="w-full px-3 py-2.5 bg-white/60 border border-cream-dark rounded-lg text-sm
+                      focus:outline-none focus:ring-2 focus:ring-terracotta/30"
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && identityName.trim()) handleSaveIdentity();
+                    }}
+                  />
+                  <p className="text-xs text-warm-gray/70 mt-1.5">
+                    Comma-separated. Nicknames, short forms, how people address you.
+                  </p>
+                </div>
+                <button
+                  onClick={handleSaveIdentity}
+                  disabled={!identityName.trim()}
+                  className="w-full px-4 py-2.5 bg-terracotta text-white rounded-lg font-medium
+                    hover:bg-terracotta-dark transition-colors disabled:opacity-50
+                    flex items-center justify-center gap-2"
+                >
+                  Continue <ArrowRight size={16} />
+                </button>
+                <p className="text-xs text-warm-gray/70 text-center leading-relaxed">
+                  You can change this anytime in Settings.
+                </p>
               </div>
             </div>
           </FadeStep>

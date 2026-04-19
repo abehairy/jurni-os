@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from './components/Sidebar';
-import ScoreScreen from './screens/ScoreScreen';
+import LifeLandscape from './screens/LifeLandscape';
 import Timeline from './screens/Timeline';
 import People from './screens/People';
 import Patterns from './screens/Patterns';
@@ -26,22 +26,34 @@ function createMockApi() {
     recalculateScores: async () => null,
     deleteAllData: async () => true,
     exportData: async () => null,
-    onImportProgress: () => () => {},
+    onImportProgress: () => () => { },
     openConnector: async () => true,
     closeConnector: async () => true,
     getConnectorStatus: async () => ({ isOpen: false, enabled: false }),
+    syncProvider: async () => ({ ok: false, error: 'Not running in Electron' }),
+    onSyncProgress: () => () => { },
     selectPhotosFolder: async () => null,
-    onConnectorStatus: () => () => {},
-    onNewMoment: () => () => {},
-    onScoresUpdated: () => () => {},
+    onConnectorStatus: () => () => { },
+    onNewMoment: () => () => { },
+    onScoresUpdated: () => () => { },
+    onLandscapeUpdated: () => () => { },
+    onRecatProgress: () => () => { },
+    getLandscape: async () => ({ tiles: [], period: { start: '', end: '', group: 'topic' }, threadStats: { total: 0, pending: 0, done: 0 } }),
+    getTileDetail: async () => ({ stories: [], people: [], totalMentions: 0, threadCount: 0 }),
+    getTileBriefing: async () => null,
+    recategorizeMoments: async () => ({ ok: false, error: 'Not running in Electron' }),
+    rereadAllThreads: async () => ({ ok: false, error: 'Not running in Electron' }),
+    getAvailableModels: async () => ({ landscape: [], analysis: [] }),
+    getUserIdentity: async () => ({ name: null, aliases: [] }),
+    setUserIdentity: async () => ({ ok: false }),
     getLogs: async () => 'No logs (not running in Electron)',
     getLogPath: async () => '~/.jurni/crawler.log',
-    onLogEntry: () => () => {},
+    onLogEntry: () => () => { },
   };
 }
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState('score');
+  const [currentScreen, setCurrentScreen] = useState('landscape');
   const [config, setConfig] = useState({});
   const [hasData, setHasData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -72,14 +84,14 @@ export default function App() {
     setConfig(cfg);
     const stats = await api.getStats();
     setHasData(stats.momentCount > 0);
-    setCurrentScreen('score');
+    setCurrentScreen('landscape');
   };
 
   const handleReset = () => {
     setConfig({});
     setHasData(false);
     setForceOnboarding(true);
-    setCurrentScreen('score');
+    setCurrentScreen('landscape');
   };
 
   const hasAnyConnector = config.connector_claude === 'enabled' ||
@@ -103,7 +115,7 @@ export default function App() {
   }
 
   const screens = {
-    score: <ScoreScreen api={api} />,
+    landscape: <LifeLandscape api={api} onGoToSettings={() => setCurrentScreen('settings')} />,
     timeline: <Timeline api={api} />,
     people: <People api={api} />,
     patterns: <Patterns api={api} />,

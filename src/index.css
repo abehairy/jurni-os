@@ -65,6 +65,41 @@
   transition: opacity 300ms ease, transform 300ms ease;
 }
 
+/* Life Landscape scrubber */
+.jl-scrubber {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  background: rgba(245, 235, 216, 0.15);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.jl-scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #E89B6A;
+  cursor: pointer;
+  box-shadow: 0 0 0 3px rgba(232, 155, 106, 0.2);
+  transition: box-shadow 0.15s ease;
+}
+.jl-scrubber::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 0 5px rgba(232, 155, 106, 0.3);
+}
+.jl-scrubber::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #E89B6A;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 0 3px rgba(232, 155, 106, 0.2);
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;

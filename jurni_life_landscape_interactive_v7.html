@@ -1,0 +1,452 @@
+<div style="padding: 1rem 0;">
+
+<h2 style="position: absolute; left: -9999px;">Interactive Jurni Life Landscape with time range, grouping, and drill-down.</h2>
+
+<style>
+  .jl-tile { cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease; position: relative; overflow: hidden; }
+  .jl-tile:hover { transform: translateY(-1px); filter: brightness(1.08); z-index: 2; }
+  .jl-tile.dimmed { filter: brightness(0.45) saturate(0.6); }
+  .jl-tile.dimmed:hover { filter: brightness(0.7) saturate(0.8); }
+  .jl-chip { cursor: pointer; transition: all 0.12s ease; user-select: none; }
+  .jl-chip:hover { background: rgba(245,235,216,0.08); }
+  .jl-chip.active { background: rgba(232,155,106,0.18); color: #FBE5D0; border-color: rgba(232,155,106,0.4); }
+  .jl-drawer { max-height: 0; overflow: hidden; transition: max-height 0.3s ease, margin-top 0.3s ease; }
+  .jl-drawer.open { max-height: 600px; margin-top: 18px; }
+  .jl-drilldown-row { cursor: pointer; transition: background 0.12s ease; }
+  .jl-drilldown-row:hover { background: rgba(245,235,216,0.05); }
+  .jl-range-slider { appearance: none; width: 100%; height: 3px; background: rgba(245,235,216,0.15); border-radius: 2px; outline: none; cursor: pointer; }
+  .jl-range-slider::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #E89B6A; cursor: pointer; box-shadow: 0 0 0 3px rgba(232,155,106,0.2); }
+  .jl-range-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #E89B6A; cursor: pointer; border: none; box-shadow: 0 0 0 3px rgba(232,155,106,0.2); }
+</style>
+
+<div style="background: #2A1E15; border-radius: 18px; padding: 26px 30px; font-family: system-ui, -apple-system, sans-serif; color: #F5EBD8;">
+
+  <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px;">
+    <div style="font-family: Georgia, serif; font-style: italic; font-size: 24px; color: #F5EBD8; letter-spacing: -0.3px;">Jurni</div>
+    <div id="jl-week-label" style="font-size: 10px; letter-spacing: 2.5px; color: #A89A82; text-transform: uppercase;">Week 16 · Apr 18, 2026</div>
+  </div>
+
+  <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center;">
+    <div style="font-size: 9px; color: #8B7A5E; letter-spacing: 1.5px; text-transform: uppercase; margin-right: 4px;">Range</div>
+    <div class="jl-chip" data-range="1w" style="font-size: 11px; padding: 5px 11px; border: 0.5px solid rgba(245,235,216,0.15); border-radius: 20px; color: #A89A82;">1W</div>
+    <div class="jl-chip active" data-range="4w" style="font-size: 11px; padding: 5px 11px; border: 0.5px solid rgba(245,235,216,0.15); border-radius: 20px; color: #A89A82;">4W</div>
+    <div class="jl-chip" data-range="12w" style="font-size: 11px; padding: 5px 11px; border: 0.5px solid rgba(245,235,216,0.15); border-radius: 20px; color: #A89A82;">12W</div>
+    <div class="jl-chip" data-range="ytd" style="font-size: 11px; padding: 5px 11px; border: 0.5px solid rgba(245,235,216,0.15); border-radius: 20px; color: #A89A82;">YTD</div>
+    <div class="jl-chip" data-range="all" style="font-size: 11px; padding: 5px 11px; border: 0.5px solid rgba(245,235,216,0.15); border-radius: 20px; color: #A89A82;">All</div>
+
+    <div style="width: 1px; height: 20px; background: rgba(245,235,216,0.12); margin: 0 8px;"></div>
+
+    <div style="font-size: 9px; color: #8B7A5E; letter-spacing: 1.5px; text-transform: uppercase; margin-right: 4px;">Group by</div>
+    <div class="jl-chip active" data-group="domain" style="font-size: 11px; padding: 5px 11px; border: 0.5px solid rgba(245,235,216,0.15); border-radius: 20px; color: #A89A82;">Domain</div>
+    <div class="jl-chip" data-group="people" style="font-size: 11px; padding: 5px 11px; border: 0.5px solid rgba(245,235,216,0.15); border-radius: 20px; color: #A89A82;">People</div>
+    <div class="jl-chip" data-group="mood" style="font-size: 11px; padding: 5px 11px; border: 0.5px solid rgba(245,235,216,0.15); border-radius: 20px; color: #A89A82;">Mood</div>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding: 10px 14px; background: rgba(245,235,216,0.04); border-radius: 8px; border: 0.5px solid rgba(245,235,216,0.08);">
+    <div style="font-size: 9px; color: #8B7A5E; letter-spacing: 1.5px; text-transform: uppercase; white-space: nowrap;">Scrub</div>
+    <input id="jl-week-slider" type="range" min="1" max="16" value="16" class="jl-range-slider" style="flex: 1;"/>
+    <div style="font-size: 10px; color: #A89A82; white-space: nowrap; min-width: 55px; text-align: right;">← past · now</div>
+  </div>
+
+  <div id="jl-caption" style="font-family: Georgia, serif; font-style: italic; font-size: 15px; color: #D4C4A8; line-height: 1.6; margin-bottom: 20px; max-width: 600px; letter-spacing: 0.1px;">
+    Work is crowding the north. Love is cold on the edge. Jurni is the rising pressure system this week, and it's pulling air away from Clinera. Ashraf is still at the center.
+  </div>
+
+  <div id="jl-grid" style="display: grid; grid-template-columns: repeat(12, 1fr); grid-auto-rows: 30px; gap: 4px;">
+
+    <div class="jl-tile" data-tile="clinera" style="grid-column: 1 / 6; grid-row: 1 / 8; background: linear-gradient(135deg, #8A3822 0%, #6B2818 100%); border-radius: 6px; padding: 14px 16px; box-shadow: inset 0 1px 0 rgba(255,230,200,0.08);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <div style="font-size: 9px; letter-spacing: 2px; color: #F2A070; text-transform: uppercase; opacity: 0.8;">Work</div>
+          <div style="font-family: Georgia, serif; font-size: 26px; color: #FBE5D0; margin-top: 4px; letter-spacing: -0.5px;">Clinera</div>
+          <div style="font-size: 11px; color: #E89B6A; margin-top: 2px; opacity: 0.75;">Semra · AZ SSA · Seoudi</div>
+        </div>
+        <div style="background: rgba(255,180,140,0.15); border-radius: 4px; padding: 3px 8px; font-size: 11px; color: #FBC49B;">▼ 4.2%</div>
+      </div>
+      <svg width="100%" height="36" viewBox="0 0 200 36" style="position: absolute; bottom: 40px; left: 16px; right: 16px; width: calc(100% - 32px); opacity: 0.55;">
+        <polyline points="0,10 17,8 34,12 51,9 68,14 85,11 102,16 119,18 136,15 153,20 170,22 187,24 200,28" fill="none" stroke="#FBC49B" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      <div style="position: absolute; bottom: 12px; left: 16px; font-size: 10px; color: #E89B6A; opacity: 0.6;">31% · biggest position · tap to open</div>
+    </div>
+
+    <div class="jl-tile" data-tile="jurni" style="grid-column: 6 / 9; grid-row: 1 / 6; background: linear-gradient(135deg, #3E6B2F 0%, #2D5023 100%); border-radius: 6px; padding: 12px 14px; box-shadow: inset 0 1px 0 rgba(200,255,180,0.1), 0 0 20px rgba(127,174,90,0.15);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <div style="font-size: 9px; letter-spacing: 2px; color: #A8D98A; text-transform: uppercase; opacity: 0.8;">Craft</div>
+          <div style="font-family: Georgia, serif; font-size: 22px; color: #E8F5D8; margin-top: 4px; letter-spacing: -0.3px;">Jurni</div>
+          <div style="font-size: 10px; color: #A8D98A; margin-top: 2px; opacity: 0.7;">noticing engine</div>
+        </div>
+        <div style="background: rgba(200,255,180,0.18); border-radius: 4px; padding: 3px 8px; font-size: 11px; color: #D4F0B8;">▲ 12.4%</div>
+      </div>
+      <svg width="100%" height="30" viewBox="0 0 120 30" style="position: absolute; bottom: 28px; left: 14px; right: 14px; width: calc(100% - 28px); opacity: 0.6;">
+        <polyline points="0,24 10,22 20,23 30,20 40,22 50,18 60,19 70,16 80,14 90,12 100,8 110,5 120,3" fill="none" stroke="#D4F0B8" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      <div style="position: absolute; bottom: 10px; left: 14px; font-size: 10px; color: #A8D98A; opacity: 0.65;">19% · rising fast</div>
+    </div>
+
+    <div class="jl-tile" data-tile="mentara" style="grid-column: 9 / 13; grid-row: 1 / 5; background: linear-gradient(135deg, #7A3820 0%, #5D2818 100%); border-radius: 6px; padding: 11px 13px; box-shadow: inset 0 1px 0 rgba(255,230,200,0.07);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <div style="font-size: 9px; letter-spacing: 2px; color: #F2A070; text-transform: uppercase; opacity: 0.8;">Work</div>
+          <div style="font-family: Georgia, serif; font-size: 19px; color: #FBE5D0; margin-top: 3px; letter-spacing: -0.3px;">Mentara</div>
+          <div style="font-size: 10px; color: #E89B6A; margin-top: 2px; opacity: 0.7;">UCB pilot · Johannes</div>
+        </div>
+        <div style="background: rgba(255,180,140,0.15); border-radius: 4px; padding: 3px 7px; font-size: 10px; color: #FBC49B;">▼ 6.8%</div>
+      </div>
+      <svg width="100%" height="24" viewBox="0 0 120 24" style="position: absolute; bottom: 12px; left: 13px; right: 13px; width: calc(100% - 26px); opacity: 0.5;">
+        <polyline points="0,6 12,8 24,7 36,10 48,12 60,11 72,14 84,16 96,17 108,19 120,21" fill="none" stroke="#FBC49B" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <div class="jl-tile" data-tile="money" style="grid-column: 6 / 9; grid-row: 6 / 8; background: linear-gradient(135deg, #5A4530 0%, #3E3020 100%); border-radius: 6px; padding: 9px 12px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <div style="font-size: 9px; letter-spacing: 2px; color: #D4A574; text-transform: uppercase; opacity: 0.75;">Money</div>
+          <div style="font-family: Georgia, serif; font-size: 14px; color: #F0E0C4; margin-top: 2px;">Cash flow</div>
+        </div>
+        <div style="font-size: 10px; color: #D4A574; opacity: 0.7;">flat · 8%</div>
+      </div>
+    </div>
+
+    <div class="jl-tile" data-tile="amr" style="grid-column: 9 / 11; grid-row: 5 / 7; background: linear-gradient(135deg, #4A3D5A 0%, #342A42 100%); border-radius: 6px; padding: 8px 10px;">
+      <div style="font-size: 9px; letter-spacing: 1.5px; color: #B9A8D4; text-transform: uppercase; opacity: 0.75;">Peers</div>
+      <div style="font-family: Georgia, serif; font-size: 14px; color: #E6DCF0; margin-top: 2px;">Amr</div>
+      <div style="font-size: 9px; color: #B9A8D4; opacity: 0.65; margin-top: 2px;">▲ 0.5%</div>
+    </div>
+
+    <div class="jl-tile" data-tile="johannes" style="grid-column: 11 / 13; grid-row: 5 / 7; background: linear-gradient(135deg, #4A3D5A 0%, #342A42 100%); border-radius: 6px; padding: 8px 10px;">
+      <div style="font-size: 9px; letter-spacing: 1.5px; color: #B9A8D4; text-transform: uppercase; opacity: 0.75;">Peers</div>
+      <div style="font-family: Georgia, serif; font-size: 13px; color: #E6DCF0; margin-top: 2px;">Johannes</div>
+      <div style="font-size: 9px; color: #B9A8D4; opacity: 0.65; margin-top: 2px;">= flat</div>
+    </div>
+
+    <div class="jl-tile" data-tile="public" style="grid-column: 9 / 13; grid-row: 7 / 8; background: linear-gradient(135deg, #2D4A5A 0%, #1E3544 100%); border-radius: 6px; padding: 6px 11px; display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <span style="font-size: 9px; letter-spacing: 1.5px; color: #8FB4D4; text-transform: uppercase; opacity: 0.75;">Public</span>
+        <span style="font-family: Georgia, serif; font-size: 12px; color: #D4E4F0; margin-left: 8px;">posts</span>
+      </div>
+      <div style="font-size: 10px; color: #9AB4D1; opacity: 0.75;">▲ 1.8%</div>
+    </div>
+
+    <div class="jl-tile" data-tile="yara" style="grid-column: 1 / 5; grid-row: 8 / 12; background: linear-gradient(135deg, #5A4870 0%, #3E3050 100%); border-radius: 6px; padding: 12px 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <div style="font-size: 9px; letter-spacing: 2px; color: #C4A8E0; text-transform: uppercase; opacity: 0.8;">Love</div>
+          <div style="font-family: Georgia, serif; font-size: 22px; color: #EEE0F5; margin-top: 3px; letter-spacing: -0.3px;">Yara</div>
+          <div style="font-size: 10px; color: #C4A8E0; margin-top: 2px; opacity: 0.7;">mentions fading</div>
+        </div>
+        <div style="background: rgba(255,180,140,0.15); border-radius: 4px; padding: 3px 7px; font-size: 10px; color: #FBC49B;">▼ 2.1%</div>
+      </div>
+      <svg width="100%" height="28" viewBox="0 0 150 28" style="position: absolute; bottom: 14px; left: 14px; right: 14px; width: calc(100% - 28px); opacity: 0.5;">
+        <polyline points="0,8 15,6 30,10 45,8 60,12 75,10 90,14 105,16 120,18 135,20 150,22" fill="none" stroke="#DBC4ED" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <div class="jl-tile" data-tile="diala" style="grid-column: 5 / 7; grid-row: 8 / 11; background: linear-gradient(135deg, #604A78 0%, #453255 100%); border-radius: 6px; padding: 9px 11px;">
+      <div style="font-size: 9px; letter-spacing: 1.5px; color: #C4A8E0; text-transform: uppercase; opacity: 0.75;">Child</div>
+      <div style="font-family: Georgia, serif; font-size: 16px; color: #EEE0F5; margin-top: 2px;">Diala</div>
+      <div style="font-size: 9px; color: #C4A8E0; opacity: 0.65; margin-top: 3px;">▲ 0.3%</div>
+    </div>
+
+    <div class="jl-tile" data-tile="faith" style="grid-column: 7 / 9; grid-row: 8 / 11; background: linear-gradient(135deg, #2D5068 0%, #1E3A52 100%); border-radius: 6px; padding: 9px 11px;">
+      <div style="font-size: 9px; letter-spacing: 1.5px; color: #8FB4D4; text-transform: uppercase; opacity: 0.75;">Faith</div>
+      <div style="font-family: Georgia, serif; font-size: 16px; color: #D8E6F2; margin-top: 2px;">Fajr</div>
+      <div style="font-size: 9px; color: #8FB4D4; opacity: 0.7; margin-top: 3px;">▲ 1.8%</div>
+    </div>
+
+    <div class="jl-tile" data-tile="ashraf" style="grid-column: 9 / 11; grid-row: 8 / 10; background: #1F1814; border: 0.5px solid #3A2D24; border-radius: 6px; padding: 8px 10px;">
+      <div style="font-size: 9px; letter-spacing: 1.5px; color: #8B7A5E; text-transform: uppercase; opacity: 0.8;">Grief</div>
+      <div style="font-family: Georgia, serif; font-style: italic; font-size: 13px; color: #A89A82; margin-top: 2px;">Ashraf</div>
+      <div style="font-size: 9px; color: #6B5D45; opacity: 0.7; margin-top: 2px;">quiet · always</div>
+    </div>
+
+    <div class="jl-tile" data-tile="strategy" style="grid-column: 11 / 13; grid-row: 8 / 10; background: linear-gradient(135deg, #5A4228 0%, #3E2D1C 100%); border-radius: 6px; padding: 8px 10px;">
+      <div style="font-size: 9px; letter-spacing: 1.5px; color: #D4A574; text-transform: uppercase; opacity: 0.75;">Mind</div>
+      <div style="font-family: Georgia, serif; font-size: 13px; color: #F0D8B0; margin-top: 2px;">Strategy</div>
+      <div style="font-size: 9px; color: #D4A574; opacity: 0.7; margin-top: 2px;">▲ 2%</div>
+    </div>
+
+    <div class="jl-tile" data-tile="hearth" style="grid-column: 9 / 13; grid-row: 10 / 11; background: #3A2D1F; border-radius: 6px; padding: 6px 11px; display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <span style="font-size: 9px; letter-spacing: 1.5px; color: #B89A6E; text-transform: uppercase; opacity: 0.7;">Hearth</span>
+        <span style="font-family: Georgia, serif; font-size: 11px; color: #D4B88A; margin-left: 8px; opacity: 0.8;">home</span>
+      </div>
+      <div style="font-size: 10px; color: #B89A6E; opacity: 0.65;">▼ 0.4%</div>
+    </div>
+
+    <div class="jl-tile" data-tile="body" style="grid-column: 5 / 9; grid-row: 11 / 12; background: #3A2D1F; border-radius: 6px; padding: 6px 11px; display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <span style="font-size: 9px; letter-spacing: 1.5px; color: #B89A6E; text-transform: uppercase; opacity: 0.7;">Body</span>
+        <span style="font-family: Georgia, serif; font-size: 11px; color: #D4B88A; margin-left: 8px; opacity: 0.8;">sleep, walks</span>
+      </div>
+      <div style="font-size: 10px; color: #E89B6A; opacity: 0.75;">▼ 1.2%</div>
+    </div>
+
+  </div>
+
+  <div id="jl-drawer" class="jl-drawer" style="background: rgba(245,235,216,0.04); border: 0.5px solid rgba(245,235,216,0.1); border-radius: 10px; padding: 0 20px;">
+    <div id="jl-drawer-inner" style="padding: 18px 0;"></div>
+  </div>
+
+  <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 18px; padding-top: 16px; border-top: 0.5px solid #3D2E22; font-size: 10px; color: #8B7A5E; letter-spacing: 1.5px; text-transform: uppercase;">
+    <div>847 conversations · since Jan 2024</div>
+    <div id="jl-refresh">Next cast · Sat Apr 25</div>
+  </div>
+
+</div>
+
+<div style="margin-top: 14px; font-size: 12px; color: var(--color-text-tertiary); text-align: center; font-family: system-ui, sans-serif; line-height: 1.6;">Tap any tile to see the stories behind it. Scrub the timeline to watch the landscape change.</div>
+
+<script>
+(function(){
+  const drillDowns = {
+    clinera: {
+      title: 'Clinera',
+      subtitle: 'Work · 31% of week · ▼ 4.2% vs prior week',
+      why: 'Mentioned in 47 conversations this week (down from 52). Sentiment shifted cooler: more "stuck" language, fewer "shipping" verbs.',
+      stories: [
+        { when: 'Apr 15 · Tue', what: 'Semra · AZ SSA meeting prep', tone: 'tense', excerpt: 'Narrowed to 10–15 accounts at $9K. Meeting outcome still unclear in archive.' },
+        { when: 'Apr 13 · Sun', what: 'Seoudi EHC follow-up', tone: 'open', excerpt: 'Sent register.clinera.ai link. Warm reception, forwarding to Dr. Hassanein.' },
+        { when: 'Apr 10 · Thu', what: 'Iraq proposal · Harith', tone: 'waiting', excerpt: 'Proposal + quotation sent Mar 30. No reply in 10 days.' },
+        { when: 'Apr 8 · Tue', what: 'MOH HCC invoice · Semra', tone: 'stuck', excerpt: '$83K outstanding. Third week unresolved.' },
+      ],
+      people: ['Semra (7)', 'Dr. Hassanein (3)', 'Harith (2)', 'El Saeed (2)'],
+    },
+    jurni: {
+      title: 'Jurni',
+      subtitle: 'Craft · 19% of week · ▲ 12.4% vs prior week',
+      why: 'Mentioned in 38 conversations this week (up from 24). Shift from strategy talk to visualization craft. Spike concentrated Apr 17–18.',
+      stories: [
+        { when: 'Apr 18 · today', what: 'Visualization iteration', tone: 'alive', excerpt: 'Four direction proposals. Landed on Life Landscape treemap with warm palette.' },
+        { when: 'Apr 17 · Fri', what: 'Noticing engine thesis', tone: 'clear', excerpt: 'Jurni as a mirror, not a dashboard. One-liner locked.' },
+        { when: 'Apr 14 · Tue', what: 'Vision B Life OS draft', tone: 'scope-creep', excerpt: 'Rewrote 4 times. Pattern matches Mentara Sep 2025 loop.' },
+      ],
+      people: ['Claude (38)', 'Johannes (1)'],
+    },
+    mentara: {
+      title: 'Mentara',
+      subtitle: 'Work · 14% of week · ▼ 6.8% vs prior week',
+      why: 'Mentioned in 19 conversations (down from 28). UCB pilot still not started. RFI deadline Apr 6 passed — no outcome reference in archive.',
+      stories: [
+        { when: 'Apr 12 · Sat', what: 'Abdullah Sallam inbound', tone: 'warm', excerpt: 'Zoetis — saw the Mentara demo video. First warm inbound in months.' },
+        { when: 'Apr 3 · Thu', what: 'Demo video posted', tone: 'peak', excerpt: 'Two inbounds same day. "This feels weirdly easy."' },
+      ],
+      people: ['Johannes (8)', 'Abdullah Sallam (2)', 'Alejandro (1)'],
+    },
+    yara: {
+      title: 'Yara',
+      subtitle: 'Love · 11% of week · ▼ 2.1% vs prior week',
+      why: 'Mentioned in 6 conversations (7d avg: 14). Concentrated in one strained thread. No neutral or positive references this week.',
+      stories: [
+        { when: 'Apr 16 · Wed', what: 'Gouna wedding trip', tone: 'strained', excerpt: 'Diala\'s wedding context. Social pressure referenced.' },
+        { when: 'Apr 12 · Sat', what: 'Marriage tension noted', tone: 'concerning', excerpt: 'First mention of acute tension since March.' },
+      ],
+      people: [],
+      flag: 'Core-relationship silence warning. 7-day mentions at 43% of monthly average.',
+    },
+    ashraf: {
+      title: 'Ashraf',
+      subtitle: 'Grief · quiet · always',
+      why: 'The silence at the center. Referenced 2 times in the last 30 days — both in conversations about creative work suppressed since 2008.',
+      stories: [
+        { when: 'Apr 9 · Wed', what: 'Poetry reflection', tone: 'tender', excerpt: 'Arabic poetry surfaced. "The side Yara doesn\'t meet."' },
+        { when: 'Mar 21 · Sat', what: 'X article on introspection', tone: 'open', excerpt: 'First public writing since the loss was acknowledged.' },
+      ],
+      people: [],
+      note: 'Not a metric to optimize. A presence to honor.',
+    },
+    amr: {
+      title: 'Amr Dawood',
+      subtitle: 'Peers · 3% of week · ▲ 0.5%',
+      why: 'Mentioned 4 times. Mivida neighbor, Fajr mosque, Sufi classes. Flagged as potential weekly anchor.',
+      stories: [
+        { when: 'Apr 17 · Fri', what: 'Walk recommendation', tone: 'practical', excerpt: 'Suggested as the human reset when screen time spikes.' },
+      ],
+      people: [],
+    },
+    johannes: {
+      title: 'Johannes',
+      subtitle: 'Peers · flat',
+      why: 'Bi-daily calls continue. Part-time at YC company. Mentara partner.',
+      stories: [],
+      people: [],
+    },
+    diala: {
+      title: 'Diala',
+      subtitle: 'Child · 4% of week · ▲ 0.3%',
+      why: 'Daughter. Mentioned consistently across the week.',
+      stories: [],
+      people: [],
+    },
+    faith: {
+      title: 'Fajr',
+      subtitle: 'Faith · 9% of week · ▲ 1.8%',
+      why: 'Post-Ramadan practice continues. First khatma completed Mar 17. Consistent rising trend in last 12w.',
+      stories: [
+        { when: 'Apr 14 · Mon', what: 'Morning practice', tone: 'steady', excerpt: 'Fajr attendance with Amr.' },
+      ],
+      people: [],
+    },
+    money: {
+      title: 'Money',
+      subtitle: 'Money · 8% of week · flat',
+      why: 'Trivium 400K EGP pending. Hikvision 891K EGP due Apr 23. Office 108 vacant.',
+      stories: [],
+      people: [],
+    },
+    public: {
+      title: 'Public posts',
+      subtitle: 'Public · ▲ 1.8%',
+      why: 'Apr 3 Mentara video → 2 inbounds. Pattern: product-specific posts drive direct buyer inbound.',
+      stories: [],
+      people: [],
+    },
+    strategy: {
+      title: 'Strategy',
+      subtitle: 'Mind · ▲ 2%',
+      why: 'Pharma-pays-for-revenue thesis sharpening. PSP voice agent direction.',
+      stories: [],
+      people: [],
+    },
+    hearth: {
+      title: 'Hearth',
+      subtitle: 'Home rhythms · ▼ 0.4%',
+      why: 'Daily rhythm mentions stable but fading slightly.',
+      stories: [],
+      people: [],
+    },
+    body: {
+      title: 'Body',
+      subtitle: 'Sleep, walks · ▼ 1.2%',
+      why: 'Sleep-related mentions up 40% vs 30-day baseline. Less walking referenced.',
+      stories: [],
+      people: [],
+    },
+  };
+
+  const captions = {
+    '1w': 'One week: Jurni broke out, Clinera slipped, Yara went quiet. The attention shifted east to craft.',
+    '4w': 'Work is crowding the north. Love is cold on the edge. Jurni is the rising pressure system this week, and it\'s pulling air away from Clinera. Ashraf is still at the center.',
+    '12w': 'Three months: Clinera held the center through March, then yielded to Jurni in April. Faith rose steadily. Yara\'s presence thinned.',
+    'ytd': 'Since January: the year opened with FMH collapse, steadied through February, broke into a new shape in April. The map redraws itself.',
+    'all': 'Since Jan 2024: two peaks (Apr–Aug 2025 with FMH, and the current April 2026 reshape). Seven structural blows in 2023 still echoing in the geography.',
+  };
+
+  const captionEl = document.getElementById('jl-caption');
+  const rangeChips = document.querySelectorAll('.jl-chip[data-range]');
+  rangeChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      rangeChips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      const range = chip.dataset.range;
+      if (captions[range]) captionEl.textContent = captions[range];
+    });
+  });
+
+  const groupChips = document.querySelectorAll('.jl-chip[data-group]');
+  groupChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      groupChips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      const group = chip.dataset.group;
+      if (group === 'people') {
+        captionEl.textContent = 'Grouped by people. Claude is 38% of your talking surface. Johannes, Amr, Yara, Semra follow. The archive shows who you think with.';
+      } else if (group === 'mood') {
+        captionEl.textContent = 'Grouped by mood. Strained conversations cluster around Work and Love. Open conversations cluster around Craft and Faith.';
+      } else {
+        captionEl.textContent = captions['4w'];
+      }
+    });
+  });
+
+  const slider = document.getElementById('jl-week-slider');
+  const weekLabel = document.getElementById('jl-week-label');
+  const weeks = [
+    'Week 1 · Jan 4', 'Week 2 · Jan 11', 'Week 3 · Jan 18', 'Week 4 · Jan 25',
+    'Week 5 · Feb 1', 'Week 6 · Feb 8', 'Week 7 · Feb 15', 'Week 8 · Feb 22',
+    'Week 9 · Mar 1', 'Week 10 · Mar 8', 'Week 11 · Mar 15', 'Week 12 · Mar 22',
+    'Week 13 · Mar 29', 'Week 14 · Apr 5', 'Week 15 · Apr 12', 'Week 16 · Apr 18, 2026',
+  ];
+  slider.addEventListener('input', () => {
+    const i = parseInt(slider.value) - 1;
+    weekLabel.textContent = weeks[i].toUpperCase();
+    if (i === 15) {
+      captionEl.textContent = captions['4w'];
+    } else if (i >= 12) {
+      captionEl.textContent = 'Late March: Jurni still dormant. Clinera and Mentara holding the north. Post-Ramadan reflection beginning.';
+    } else if (i >= 8) {
+      captionEl.textContent = 'February: FMH collapse still fresh. Structural rebuild underway. Faith tile just beginning to form.';
+    } else {
+      captionEl.textContent = 'January: the year opens shaky. FMH salary unpaid, investigation ongoing. Mansy still present.';
+    }
+  });
+
+  const drawer = document.getElementById('jl-drawer');
+  const drawerInner = document.getElementById('jl-drawer-inner');
+  const tiles = document.querySelectorAll('.jl-tile');
+  let activeTile = null;
+
+  tiles.forEach(tile => {
+    tile.addEventListener('click', () => {
+      const key = tile.dataset.tile;
+      const data = drillDowns[key];
+      if (!data) return;
+
+      if (activeTile === key) {
+        drawer.classList.remove('open');
+        tiles.forEach(t => t.classList.remove('dimmed'));
+        activeTile = null;
+        return;
+      }
+
+      activeTile = key;
+      tiles.forEach(t => t.classList.add('dimmed'));
+      tile.classList.remove('dimmed');
+
+      let html = '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;">';
+      html += '<div><div style="font-family: Georgia, serif; font-size: 22px; color: #F5EBD8; letter-spacing: -0.3px;">' + data.title + '</div>';
+      html += '<div style="font-size: 11px; color: #A89A82; margin-top: 4px; letter-spacing: 0.5px;">' + data.subtitle + '</div></div>';
+      html += '<div style="font-size: 10px; color: #8B7A5E; letter-spacing: 1.5px; text-transform: uppercase; padding: 4px 10px; border: 0.5px solid rgba(245,235,216,0.15); border-radius: 4px; cursor: pointer;" onclick="document.getElementById(\'jl-drawer\').classList.remove(\'open\'); document.querySelectorAll(\'.jl-tile\').forEach(t => t.classList.remove(\'dimmed\'));">close</div>';
+      html += '</div>';
+
+      html += '<div style="font-size: 13px; color: #D4C4A8; line-height: 1.6; margin-bottom: 16px; padding: 10px 14px; background: rgba(245,235,216,0.04); border-radius: 6px; border-left: 2px solid #E89B6A;">' + data.why + '</div>';
+
+      if (data.flag) {
+        html += '<div style="font-size: 11px; color: #FBC49B; margin-bottom: 14px; padding: 8px 12px; background: rgba(255,180,140,0.08); border-radius: 6px;"><strong style="letter-spacing: 1px; text-transform: uppercase; font-size: 9px;">Flag</strong> · ' + data.flag + '</div>';
+      }
+
+      if (data.note) {
+        html += '<div style="font-family: Georgia, serif; font-style: italic; font-size: 13px; color: #A89A82; margin-bottom: 14px; padding: 8px 12px;">' + data.note + '</div>';
+      }
+
+      if (data.stories.length > 0) {
+        html += '<div style="font-size: 9px; letter-spacing: 2px; color: #8B7A5E; text-transform: uppercase; margin-bottom: 8px;">Stories behind this</div>';
+        html += '<div style="display: flex; flex-direction: column; gap: 2px;">';
+        data.stories.forEach(s => {
+          html += '<div class="jl-drilldown-row" style="padding: 10px 12px; border-radius: 6px; display: grid; grid-template-columns: 90px 1fr auto; gap: 14px; align-items: baseline;">';
+          html += '<div style="font-size: 10px; color: #8B7A5E; letter-spacing: 1px;">' + s.when + '</div>';
+          html += '<div><div style="font-size: 13px; color: #F5EBD8;">' + s.what + '</div>';
+          html += '<div style="font-size: 11px; color: #A89A82; margin-top: 3px; font-style: italic;">' + s.excerpt + '</div></div>';
+          html += '<div style="font-size: 10px; color: #D4A574; letter-spacing: 0.5px;">' + s.tone + '</div>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      if (data.people.length > 0) {
+        html += '<div style="font-size: 9px; letter-spacing: 2px; color: #8B7A5E; text-transform: uppercase; margin: 16px 0 8px;">People mentioned</div>';
+        html += '<div style="display: flex; flex-wrap: wrap; gap: 6px;">';
+        data.people.forEach(p => {
+          html += '<div style="font-size: 11px; color: #D4C4A8; padding: 4px 10px; background: rgba(245,235,216,0.05); border-radius: 12px;">' + p + '</div>';
+        });
+        html += '</div>';
+      }
+
+      drawerInner.innerHTML = html;
+      drawer.classList.add('open');
+    });
+  });
+})();
+</script>
+
+</div>

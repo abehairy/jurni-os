@@ -6,3 +6,57 @@ asl checks to make sure its resleiten thingsl ike
 - disk size
 - persmisiosn
 these can cause failure osf the app so our app must handle them and always
+
+---
+
+## Smart sync (Systrom-style) — partially done, expand later
+Reframe: we don't need live capture, we need it to FEEL live. User opens app,
+we sync during their first 20–60 seconds of looking at the landscape.
+
+DONE:
+- Idempotent ingestion (moments dedup via content_hash + UNIQUE index).
+  Re-running the crawler is now safe. This was the foundational blocker.
+- Manual "Sync now" button per provider in Settings (hidden browser window,
+  existing crawler runs, reports +N new / M skipped).
+
+STILL TODO:
+1. Hidden launch-crawler — on app startup, if connector_claude === 'enabled',
+   open the connector window with `show: false`, run existing crawl, close it.
+   (Infrastructure is all there now — see sync-provider IPC handler.)
+2. Sync indicator in landscape header — small pill: idle / syncing / "synced 2m ago".
+3. Landscape auto-refresh on new moments with gentle fade animation (already
+   listens to landscape-updated; just needs animation polish).
+4. Grace-window crawl on quit — hook `before-quit`, run one final sync, then
+   actually quit. So next launch is already fresh.
+5. Speculative crawl during onboarding — the moment the user logs in, begin
+   pulling history while they're still reading the "we're pulling your history"
+   screen. Progress bar jumps because we did the work during the caption.
+
+Files: electron/main.js (auto-open hidden, grace quit), channels/browser-preload.js
+(already handles crawl), src/screens/LifeLandscape.jsx (sync indicator).
+Zero new dependencies, no always-on daemon.
+
+---
+
+## Entity resolution / identity graph — deferred, build later
+Problem: "Amr" collides across 2+ people. Gets worse when calendar/email adds
+bare names with no context. See conversation for full audit.
+
+Decided shape (fluid, not rigid):
+- mentions table (every extracted name + context)
+- identity_links table (must_link / cannot_link constraints from user clicks)
+- identity = clustering computed over mentions (union-find + context overlap)
+- strong keys (emails, phones) = privileged edges in same graph
+- UX: in-place split/merge on a tile ("this isn't the same person")
+- No profiles table, no "review center" screen, no onboarding addition
+
+Phases:
+1. Plumbing (mentions + identity_links tables, non-breaking)
+2. Strong-key ingestion (once contacts/calendar connectors exist)
+3. LLM disambiguation in thread pass
+4. In-place split/merge affordance on People tiles
+
+Known leak to fix NOW regardless: user's email (e.g. "ahmed@behairy.me") is
+being extracted as a person entity. identity filter only matches name strings,
+not emails. Need to add the user's email as an alias, OR teach extraction not
+to extract emails as people at all.
