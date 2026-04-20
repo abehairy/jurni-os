@@ -5,6 +5,7 @@ import { squarify } from '../lib/squarify';
 import Tile from '../components/landscape/Tile';
 import DrillDrawer from '../components/landscape/DrillDrawer';
 import Scrubber from '../components/landscape/Scrubber';
+import { paletteFor } from '../lib/landscape-theme';
 
 const RANGES = [
   { id: '1w', label: '1W' },
@@ -20,7 +21,7 @@ const GROUPS = [
   { id: 'time', label: 'Timeline' },
 ];
 
-export default function LifeLandscape({ api, onGoToSettings }) {
+export default function LifeLandscape({ api, onGoToSettings, pins = [], onPinsChanged, pinToOpen, onPinOpened }) {
   const [range, setRange] = useState('4w');
   const [group, setGroup] = useState('topic');
   const [weekOffset, setWeekOffset] = useState(0);
@@ -30,6 +31,52 @@ export default function LifeLandscape({ api, onGoToSettings }) {
   const [recatRunning, setRecatRunning] = useState(false);
   const [recatProgress, setRecatProgress] = useState(null);
   const [identity, setIdentity] = useState(null);
+  // 'full' = treemap + drawer. 'focused' = only drawer (entered via pin click).
+  // Tile clicks keep us in 'full'; only sidebar pin clicks flip to 'focused'.
+  const [viewMode, setViewMode] = useState('full');
+
+  // Build a lookup of pinned keys for the current group mode so the drawer
+  // can show the pin as filled/outline instantly.
+  const pinnedKeysForGroup = useMemo(() => {
+    const s = new Set();
+    for (const p of pins) {
+      if (p.groupMode === group) s.add(p.tileKey);
+    }
+    return s;
+  }, [pins, group]);
+
+  // Respond to sidebar pin clicks: switch group if needed, enter focused
+  // mode (drawer-only, no landscape behind it), open the drawer.
+  useEffect(() => {
+    if (!pinToOpen) return;
+    if (pinToOpen.groupMode && pinToOpen.groupMode !== group) {
+      setGroup(pinToOpen.groupMode);
+    }
+    setActiveTile({
+      key: pinToOpen.tileKey,
+      label: pinToOpen.label,
+      category: pinToOpen.category,
+      pctOfTotal: 0,
+      changePct: 0,
+      tone: null,
+      count: 0,
+    });
+    setViewMode('focused');
+    onPinOpened?.();
+  }, [pinToOpen]);
+
+  const exitFocused = () => {
+    setViewMode('full');
+    setActiveTile(null);
+  };
+
+  // When landscape data refreshes and we have an activeTile, upgrade it with
+  // the full tile object if present — keeps the drawer numbers accurate.
+  useEffect(() => {
+    if (!activeTile || !data?.tiles) return;
+    const match = data.tiles.find(t => t.key === activeTile.key);
+    if (match && match !== activeTile) setActiveTile(match);
+  }, [data]);
 
   useEffect(() => {
     api.getUserIdentity?.().then(setIdentity).catch(() => {});
@@ -69,19 +116,27 @@ export default function LifeLandscape({ api, onGoToSettings }) {
     return () => { off1?.(); off2?.(); off3?.(); };
   }, [api, range, group, weekOffset]);
 
-  // Measure grid container for treemap sizing
+  // Measure grid container for treemap sizing.
+  // Re-runs when viewMode flips back to 'full' so the observer re-attaches to
+  // the fresh grid DOM node (otherwise after a focused detour the grid would
+  // be rendered with a stale 0x0 measurement and no tiles would appear).
   useEffect(() => {
+    if (viewMode !== 'full') return;
     if (!gridRef.current) return;
     const el = gridRef.current;
     const ro = new ResizeObserver(() => {
       const rect = el.getBoundingClientRect();
-      setGridSize({ width: rect.width, height: rect.height });
+      if (rect.width > 0 && rect.height > 0) {
+        setGridSize({ width: rect.width, height: rect.height });
+      }
     });
     ro.observe(el);
     const r = el.getBoundingClientRect();
-    setGridSize({ width: r.width, height: r.height });
+    if (r.width > 0 && r.height > 0) {
+      setGridSize({ width: r.width, height: r.height });
+    }
     return () => ro.disconnect();
-  }, []);
+  }, [viewMode]);
 
   // Compute squarified layout
   const layout = useMemo(() => {
@@ -110,16 +165,90 @@ export default function LifeLandscape({ api, onGoToSettings }) {
     }
   };
 
+  const handleTogglePin = async (tile) => {
+    if (!tile) return;
+    const payload = { tileKey: tile.key, groupMode: group };
+    const alreadyPinned = pinnedKeysForGroup.has(tile.key);
+    try {
+      if (alreadyPinned) {
+        await api.removePin?.(payload);
+      } else {
+        const pal = paletteFor(tile.category);
+        await api.addPin?.({
+          ...payload,
+          label: tile.label,
+          category: tile.category,
+          colorHex: pal?.accent,
+        });
+      }
+      onPinsChanged?.();
+    } catch (e) {
+      console.error('Pin toggle failed:', e);
+    }
+  };
+
+  if (viewMode === 'focused' && activeTile) {
+    return (
+      <div style={{
+        background: 'var(--surface)',
+        minHeight: 'calc(100vh - 32px)',
+        padding: '24px 40px 48px',
+        color: 'var(--text-primary)',
+        fontFamily: 'DM Sans, system-ui, sans-serif',
+      }}>
+        {/* Focused mode = the only thing on the page. Give it real width
+            (caps at ~1000px so prose still reads at comfortable line length). */}
+        <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+          <button
+            onClick={exitFocused}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', marginBottom: 18,
+              background: 'transparent',
+              border: '0.5px solid var(--border-strong)',
+              borderRadius: 20,
+              color: 'var(--text-muted)',
+              fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+              letterSpacing: 0.2, transition: 'all 0.12s ease',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = 'var(--text-primary)';
+              e.currentTarget.style.background = 'var(--hover-overlay)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = 'var(--text-muted)';
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            ← Landscape
+          </button>
+
+          <DrillDrawer
+            api={api}
+            tile={activeTile}
+            range={range}
+            weekOffset={weekOffset}
+            group={group}
+            isPinned={pinnedKeysForGroup.has(activeTile.key)}
+            onTogglePin={() => handleTogglePin(activeTile)}
+            onClose={exitFocused}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{
-      background: '#2A1E15',
-      borderRadius: 18,
-      padding: '26px 30px',
-      color: '#F5EBD8',
+      background: 'var(--surface)',
+      minHeight: 'calc(100vh - 32px)',
+      padding: '18px 40px 40px',
+      color: 'var(--text-primary)',
       fontFamily: 'DM Sans, system-ui, sans-serif',
-      boxShadow: '0 10px 40px -10px rgba(42, 30, 21, 0.25)',
     }}>
-      <Header periodLabel={periodLabel} />
+      {/* Hero: the narrative IS the title. When data's not ready yet,
+          a quiet time-anchored greeting fills the space so the top is never empty. */}
+      <Hero data={data} loading={loading} range={range} />
 
       {identity && !identity.name && (
         <IdentityBanner onClick={onGoToSettings} />
@@ -140,8 +269,6 @@ export default function LifeLandscape({ api, onGoToSettings }) {
         onChange={(v) => { setWeekOffset(v); setActiveTile(null); }}
         periodLabel={periodLabel}
       />
-
-      <Caption data={data} loading={loading} />
 
       <div
         ref={gridRef}
@@ -188,6 +315,9 @@ export default function LifeLandscape({ api, onGoToSettings }) {
         tile={activeTile}
         range={range}
         weekOffset={weekOffset}
+        group={group}
+        isPinned={activeTile ? pinnedKeysForGroup.has(activeTile.key) : false}
+        onTogglePin={activeTile ? () => handleTogglePin(activeTile) : null}
         onClose={() => setActiveTile(null)}
       />
 
@@ -198,26 +328,52 @@ export default function LifeLandscape({ api, onGoToSettings }) {
 
 // ---------- Sub-components ----------
 
-function Header({ periodLabel }) {
+/**
+ * The landscape has no page title anymore — the narrative is the title.
+ * When data isn't ready (first boot, re-sync, empty range), fall back to
+ * a calm time-anchored greeting so the top of the screen is never empty.
+ */
+function Hero({ data, loading, range }) {
+  const narrative = useMemo(() => {
+    if (!data || !data.tiles || data.tiles.length === 0) return null;
+    return narrateLandscape(data);
+  }, [data]);
+
+  const text = narrative || fallbackGreeting(range, loading);
+
   return (
-    <div style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-      marginBottom: 14,
-    }}>
-      <div style={{
-        fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 26,
-        color: '#F5EBD8', letterSpacing: '-0.4px',
-      }}>
-        Life Landscape
-      </div>
-      <div style={{
-        fontSize: 10, letterSpacing: 2.5, color: '#A89A82',
-        textTransform: 'uppercase',
-      }}>
-        {periodLabel}
-      </div>
-    </div>
+    <motion.div
+      key={text}
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      style={{
+        fontFamily: 'Georgia, serif', fontStyle: 'italic',
+        fontSize: narrative ? 22 : 20,
+        color: narrative ? 'var(--text-primary)' : 'var(--text-muted)',
+        lineHeight: 1.4, marginBottom: 22, maxWidth: 720,
+        letterSpacing: -0.2,
+      }}
+    >
+      {text}
+    </motion.div>
   );
+}
+
+function fallbackGreeting(range, loading) {
+  if (loading) return 'Reading the landscape…';
+  const hour = new Date().getHours();
+  const time =
+    hour < 5 ? 'Late night' :
+    hour < 12 ? 'Good morning' :
+    hour < 18 ? 'Good afternoon' :
+    'Good evening';
+  const scope =
+    range === '1w' ? 'this week' :
+    range === '4w' ? 'the past month' :
+    range === '12w' ? 'the past quarter' :
+    'the past year';
+  return `${time}. Here's ${scope}.`;
 }
 
 function IdentityBanner({ onClick }) {
@@ -229,23 +385,23 @@ function IdentityBanner({ onClick }) {
       style={{
         width: '100%', marginBottom: 14, padding: '10px 14px',
         display: 'flex', alignItems: 'center', gap: 10,
-        background: 'rgba(232,155,106,0.08)',
-        border: '0.5px solid rgba(232,155,106,0.25)',
+        background: 'var(--accent-soft)',
+        border: '0.5px solid var(--accent-soft-strong)',
         borderRadius: 10,
-        color: '#F5EBD8', textAlign: 'left', cursor: 'pointer',
+        color: 'var(--text-primary)', textAlign: 'left', cursor: 'pointer',
         fontFamily: 'inherit',
       }}
     >
-      <Sparkles size={14} style={{ color: '#E89B6A', flexShrink: 0 }} />
+      <Sparkles size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: '#FBE5D0' }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)' }}>
           Jurni doesn't know who you are yet
         </div>
-        <div style={{ fontSize: 11, color: '#A89A82', marginTop: 2 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
           Your own name is showing up as a topic or a peer. Set your identity in Settings so the landscape knows you're the narrator.
         </div>
       </div>
-      <div style={{ fontSize: 11, color: '#E89B6A', flexShrink: 0 }}>
+      <div style={{ fontSize: 11, color: 'var(--accent)', flexShrink: 0 }}>
         Open Settings →
       </div>
     </motion.button>
@@ -292,7 +448,7 @@ function ChipsRow({ range, setRange, group, setGroup, onRecat, recatRunning, rec
 function Label({ children }) {
   return (
     <div style={{
-      fontSize: 9, color: '#8B7A5E', letterSpacing: 1.8,
+      fontSize: 9, color: 'var(--text-muted)', letterSpacing: 1.8,
       textTransform: 'uppercase', marginRight: 4, fontWeight: 500,
     }}>{children}</div>
   );
@@ -304,17 +460,17 @@ function Chip({ active, children, onClick }) {
       onClick={onClick}
       style={{
         fontSize: 11, padding: '5px 12px',
-        border: `0.5px solid ${active ? 'rgba(232,155,106,0.4)' : 'rgba(245,235,216,0.15)'}`,
+        border: `0.5px solid ${active ? 'var(--accent-soft-strong)' : 'var(--border-strong)'}`,
         borderRadius: 20,
-        background: active ? 'rgba(232,155,106,0.18)' : 'transparent',
-        color: active ? '#FBE5D0' : '#A89A82',
+        background: active ? 'var(--accent-soft-strong)' : 'transparent',
+        color: active ? 'var(--text-primary)' : 'var(--text-muted)',
         cursor: 'pointer',
         fontFamily: 'inherit',
         letterSpacing: 0.2,
         transition: 'all 0.12s ease',
       }}
       onMouseEnter={e => {
-        if (!active) e.currentTarget.style.background = 'rgba(245,235,216,0.08)';
+        if (!active) e.currentTarget.style.background = 'var(--hover-overlay)';
       }}
       onMouseLeave={e => {
         if (!active) e.currentTarget.style.background = 'transparent';
@@ -328,7 +484,7 @@ function Chip({ active, children, onClick }) {
 function Divider() {
   return (
     <div style={{
-      width: 1, height: 20, background: 'rgba(245,235,216,0.12)', margin: '0 8px',
+      width: 1, height: 20, background: 'var(--border-strong)', margin: '0 8px',
     }} />
   );
 }
@@ -360,10 +516,10 @@ function RecatButton({ onClick, running, progress, threadStats }) {
     const unit = progress.unit || 'threads';
     return (
       <div style={{
-        fontSize: 10, color: '#E89B6A', letterSpacing: 0.3,
+        fontSize: 10, color: 'var(--accent)', letterSpacing: 0.3,
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '5px 12px',
-        border: '0.5px solid rgba(232,155,106,0.3)',
+        border: '0.5px solid var(--accent-soft-strong)',
         borderRadius: 20,
       }}>
         <RefreshCw size={11} className="animate-spin" />
@@ -376,10 +532,10 @@ function RecatButton({ onClick, running, progress, threadStats }) {
       onClick={onClick}
       style={{
         fontSize: 11, padding: '5px 12px',
-        border: '0.5px solid rgba(232,155,106,0.3)',
+        border: '0.5px solid var(--accent-soft-strong)',
         borderRadius: 20,
-        background: 'rgba(232,155,106,0.1)',
-        color: '#E89B6A',
+        background: 'var(--accent-soft)',
+        color: 'var(--accent)',
         cursor: 'pointer',
         fontFamily: 'inherit',
         display: 'flex', alignItems: 'center', gap: 6,
@@ -391,33 +547,6 @@ function RecatButton({ onClick, running, progress, threadStats }) {
   );
 }
 
-function Caption({ data, loading }) {
-  const text = useMemo(() => {
-    if (!data || !data.tiles || data.tiles.length === 0) return null;
-    return narrateLandscape(data);
-  }, [data]);
-
-  if (loading || !text) {
-    return <div style={{ height: 24, marginBottom: 20 }} />;
-  }
-
-  return (
-    <motion.div
-      key={text}
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      style={{
-        fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 15,
-        color: '#D4C4A8', lineHeight: 1.6, marginBottom: 20,
-        maxWidth: 680, letterSpacing: 0.1,
-      }}
-    >
-      {text}
-    </motion.div>
-  );
-}
-
 function Footer({ data }) {
   if (!data) return null;
   const total = data.tiles?.reduce((s, t) => s + t.count, 0) || 0;
@@ -425,8 +554,8 @@ function Footer({ data }) {
     <div style={{
       display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
       marginTop: 18, paddingTop: 16,
-      borderTop: '0.5px solid #3D2E22',
-      fontSize: 10, color: '#8B7A5E', letterSpacing: 1.5,
+      borderTop: '0.5px solid var(--border-strong)',
+      fontSize: 10, color: 'var(--text-muted)', letterSpacing: 1.5,
       textTransform: 'uppercase',
     }}>
       <div>{total} messages · {data.tiles?.length || 0} topics</div>
@@ -445,7 +574,7 @@ function LoadingShimmer() {
         animate={{ opacity: [0.3, 0.7, 0.3] }}
         transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
         style={{
-          fontSize: 11, letterSpacing: 2, color: '#8B7A5E',
+          fontSize: 11, letterSpacing: 2, color: 'var(--text-muted)',
           textTransform: 'uppercase',
         }}
       >
@@ -470,21 +599,21 @@ function EmptyState({ threadStats, onRecat, recatRunning, recatProgress }) {
       }}>
         <div style={{
           fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 22,
-          color: '#D4C4A8', textAlign: 'center',
+          color: 'var(--text-primary)', textAlign: 'center',
         }}>
           Reading your conversations...
         </div>
         <div style={{
-          width: 320, height: 2, background: 'rgba(245,235,216,0.1)',
+          width: 320, height: 2, background: 'var(--border-strong)',
           borderRadius: 2, overflow: 'hidden',
         }}>
           <motion.div
             animate={{ width: `${pct * 100}%` }}
             transition={{ duration: 0.3 }}
-            style={{ height: '100%', background: '#E89B6A' }}
+            style={{ height: '100%', background: 'var(--accent)', borderRadius: 2 }}
           />
         </div>
-        <div style={{ fontSize: 11, color: '#8B7A5E', letterSpacing: 0.5 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: 0.5 }}>
           {recatProgress.processed} / {recatProgress.total} {unit}
         </div>
       </div>
@@ -499,7 +628,7 @@ function EmptyState({ threadStats, onRecat, recatRunning, recatProgress }) {
     }}>
       <div style={{
         fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 22,
-        color: '#D4C4A8', maxWidth: 420, lineHeight: 1.5,
+        color: 'var(--text-primary)', maxWidth: 420, lineHeight: 1.5,
       }}>
         {hasData
           ? 'Your conversations are captured, but the landscape is still being drawn.'
@@ -507,7 +636,7 @@ function EmptyState({ threadStats, onRecat, recatRunning, recatProgress }) {
       </div>
 
       <div style={{
-        fontSize: 12, color: '#8B7A5E', maxWidth: 400, lineHeight: 1.6,
+        fontSize: 12, color: 'var(--text-muted)', maxWidth: 400, lineHeight: 1.6,
       }}>
         {hasData
           ? `${threadStats.done} of ${threadStats.total} threads mapped so far.`
@@ -519,9 +648,9 @@ function EmptyState({ threadStats, onRecat, recatRunning, recatProgress }) {
           onClick={onRecat}
           style={{
             fontSize: 12, padding: '9px 18px',
-            background: 'rgba(232,155,106,0.15)',
-            border: '0.5px solid rgba(232,155,106,0.4)',
-            borderRadius: 24, color: '#FBE5D0',
+            background: 'var(--accent-soft-strong)',
+            border: '0.5px solid var(--accent-soft-strong)',
+            borderRadius: 24, color: 'var(--text-primary)',
             cursor: 'pointer', fontFamily: 'inherit',
             display: 'flex', alignItems: 'center', gap: 8, marginTop: 6,
           }}

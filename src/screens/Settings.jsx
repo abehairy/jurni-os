@@ -207,7 +207,7 @@ export default function Settings({ api, config, setConfig, onReset }) {
   };
 
   const handleDeleteData = async () => {
-    if (!confirm('Delete all analyzed data? Your connectors and API key will stay. This cannot be undone.')) return;
+    if (!confirm('Delete all processed data? Your connectors and API key will stay. This cannot be undone.')) return;
     await api.deleteAllData();
     setImportResult({ success: true, message: 'All data deleted. Reconnect or import to start fresh.' });
   };
@@ -220,7 +220,15 @@ export default function Settings({ api, config, setConfig, onReset }) {
   };
 
   return (
-    <div className="max-w-xl mx-auto py-6 space-y-8">
+    <div
+      style={{
+        background: 'var(--shell)',
+        color: 'var(--text-primary)',
+        minHeight: 'calc(100vh - 32px)',
+        padding: '32px 40px 40px',
+      }}
+    >
+      <div className="max-w-xl mx-auto space-y-8">
       <h2 className="font-display text-2xl">Settings</h2>
 
       {/* About You */}
@@ -293,8 +301,8 @@ export default function Settings({ api, config, setConfig, onReset }) {
           <h3 className="font-display text-lg">OpenRouter API Key</h3>
         </div>
         <p className="text-sm text-warm-gray mb-4">
-          Jurni uses AI to analyze your conversations. Your data stays on your machine —
-          only message text is sent for analysis.{' '}
+          Jurni uses AI to read your conversations. Your data stays on your machine —
+          only message text is sent out for processing.{' '}
           <a href="https://openrouter.ai/keys" target="_blank" rel="noopener"
             className="text-terracotta underline">Get a key</a>
         </p>
@@ -319,8 +327,8 @@ export default function Settings({ api, config, setConfig, onReset }) {
           <h3 className="font-display text-lg">AI Models</h3>
         </div>
         <p className="text-sm text-warm-gray mb-5">
-          Jurni uses two models: one for identifying topics (the Landscape) and one for
-          extracting emotions/patterns. Quality here is the core of the product.
+          Jurni uses two models: one for shaping the Landscape (topics and groupings), and one
+          for reading each message. Quality here is the core of the product.
         </p>
 
         <ModelPicker
@@ -340,8 +348,8 @@ export default function Settings({ api, config, setConfig, onReset }) {
         <ModelPicker
           kind="analysis"
           icon={<Brain size={14} />}
-          title="Analysis model"
-          description="Extracts emotions, patterns, and decisions per message. Cheap model is fine."
+          title="Message-reading model"
+          description="Reads emotions, threads, and decisions from each message. A cheap model is fine."
           options={availableModels.analysis}
           current={config.analysis_model}
           defaultLabel="Mistral Small"
@@ -517,7 +525,7 @@ export default function Settings({ api, config, setConfig, onReset }) {
           <button onClick={handleDeleteData}
             className="w-full flex items-center gap-3 px-4 py-3 bg-score-red/5 rounded-lg
               text-sm text-score-red hover:bg-score-red/10 transition-colors">
-            <Trash2 size={16} /> Delete all analyzed data
+            <Trash2 size={16} /> Delete all processed data
           </button>
         </div>
       </section>
@@ -594,6 +602,7 @@ export default function Settings({ api, config, setConfig, onReset }) {
           You can delete all data at any time by removing the ~/.jurni/ folder.
         </p>
       </section>
+      </div>
     </div>
   );
 }

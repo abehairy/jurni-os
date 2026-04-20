@@ -7,6 +7,8 @@ const {
   processBatch,
   categorizeThread,
   generateBriefing,
+  chatWithTile,
+  validateOpenRouterKey,
   DEFAULT_ANALYSIS_MODEL,
   DEFAULT_LANDSCAPE_MODEL,
 } = require('../processing/processor');
@@ -68,6 +70,11 @@ function log(source, message, data) {
 }
 
 function createWindow() {
+  // Window icon. Used for the dock/taskbar in dev (in production, macOS reads
+  // the icon from the .app bundle's Info.plist via electron-builder).
+  const iconPath = path.join(__dirname, 'assets', process.platform === 'darwin' ? 'icon.icns' : 'icon-1024.png');
+  const windowIcon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : undefined;
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -75,6 +82,7 @@ function createWindow() {
     minHeight: 600,
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#FAF7F2',
+    icon: windowIcon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -490,6 +498,21 @@ app.whenReady().then(() => {
   initLogger();
   log('main', 'Jurni starting up');
 
+  // Set the dock icon for macOS dev runs (in production the .app bundle
+  // already carries the icon via electron-builder). Use PNG — .icns isn't
+  // reliably loadable through nativeImage at runtime.
+  if (process.platform === 'darwin' && app.dock) {
+    const dockIconPath = path.join(__dirname, 'assets', 'icon-1024.png');
+    if (fs.existsSync(dockIconPath)) {
+      try {
+        const dockImg = nativeImage.createFromPath(dockIconPath);
+        if (!dockImg.isEmpty()) app.dock.setIcon(dockImg);
+      } catch (e) {
+        log('main', 'dock icon failed', { err: String(e) });
+      }
+    }
+  }
+
   db = new Database(JURNI_DIR);
   db.initialize();
   log('main', 'Database initialized');
@@ -578,6 +601,34 @@ app.whenReady().then(() => {
     if (!db) return {};
     return db.getConversationSyncState(provider);
   });
+
+  // --- Pins ------------------------------------------------------------
+  ipcMain.handle('get-pins', () => {
+    if (!db) return [];
+    return db.getPins();
+  });
+
+  ipcMain.handle('add-pin', (_, payload) => {
+    if (!db) return { ok: false, error: 'DB not ready' };
+    try {
+      const result = db.addPin(payload);
+      sendToMain('pins-changed');
+      return { ok: true, ...result };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('remove-pin', (_, payload) => {
+    if (!db) return { ok: false, error: 'DB not ready' };
+    try {
+      const result = db.removePin(payload);
+      sendToMain('pins-changed');
+      return { ok: true, ...result };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
   ipcMain.on('crawler-log', (event, entry) => {
     log('crawler', entry.message, entry.data);
   });
@@ -586,6 +637,12 @@ app.whenReady().then(() => {
 
   ipcMain.handle('get-config', () => db.getConfig());
   ipcMain.handle('set-config', (_, key, value) => { db.setConfig(key, value); return true; });
+
+  // One-shot OpenRouter key check. Called from Onboarding so typos / revoked
+  // keys surface before the user moves on and hits silent LLM failures.
+  ipcMain.handle('validate-openrouter-key', async (_, apiKey) => {
+    return await validateOpenRouterKey(apiKey);
+  });
 
   ipcMain.handle('get-logs', () => {
     try { return fs.readFileSync(LOG_PATH, 'utf-8'); } catch { return ''; }
@@ -678,6 +735,58 @@ app.whenReady().then(() => {
     } catch (err) {
       log('briefing', `generate failed for ${key}`, { err: err.message });
       return null;
+    }
+  });
+
+  // --- Tile chat -------------------------------------------------------
+  // Conversational Q&A against a single tile's context. Reuses the briefing
+  // cache to avoid regenerating the overview on every message — if a briefing
+  // is cached for this tile, we include it as extra color.
+  ipcMain.handle('chat-with-tile', async (_, opts) => {
+    const {
+      key, group = 'topic', range = '4w', weekOffset = 0,
+      category, tone, pctOfTotal, changePct, label,
+      messages = [],
+    } = opts || {};
+    if (!key) return { ok: false, error: 'Missing tile key' };
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return { ok: false, error: 'No messages to send' };
+    }
+
+    const apiKey = db.getConfigValue('openrouter_api_key');
+    if (!apiKey) return { ok: false, error: 'No OpenRouter API key set' };
+
+    const { start, end } = resolveRange(range, weekOffset);
+    const detail = db.getTileDetail({ key, group, start, end });
+    if (!detail?.stories || detail.stories.length === 0) {
+      return { ok: false, error: 'No stories in this tile to chat about yet' };
+    }
+
+    const cacheKey = `${group}::${key}::${start}::${end}`;
+    const cached = briefingCache.get(cacheKey);
+    const briefing = cached?.data || null;
+
+    const model = db.getConfigValue('landscape_model') || DEFAULT_LANDSCAPE_MODEL;
+    const identity = db.getUserIdentity();
+
+    log('chat', `tile="${key}" · ${messages.length} turns · model=${model}`);
+    try {
+      const reply = await chatWithTile({
+        tile: { label: label || key, category: category || 'other', tone, pctOfTotal, changePct },
+        stories: detail.stories,
+        people: detail.people,
+        briefing,
+        messages,
+        apiKey,
+        model,
+        identity,
+      });
+      if (!reply) return { ok: false, error: 'Empty response from model' };
+      log('chat', `✓ reply · ${reply.length} chars`);
+      return { ok: true, reply };
+    } catch (err) {
+      log('chat', `failed for ${key}`, { err: err.message });
+      return { ok: false, error: err.message };
     }
   });
 

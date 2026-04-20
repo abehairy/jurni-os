@@ -123,6 +123,20 @@ class Database {
         value TEXT
       );
 
+      -- Pins: user-marked tiles that surface in the sidebar.
+      -- A pin is scoped to its group_mode because the same label can mean
+      -- different things across modes (e.g. "Clinera" as a topic vs a person).
+      CREATE TABLE IF NOT EXISTS pins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tile_key TEXT NOT NULL,
+        group_mode TEXT NOT NULL,
+        label TEXT NOT NULL,
+        category TEXT,
+        color_hex TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(tile_key, group_mode)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_moments_source ON moments(source);
       CREATE INDEX IF NOT EXISTS idx_moments_timestamp ON moments(timestamp);
       CREATE INDEX IF NOT EXISTS idx_moments_processed ON moments(processed);
@@ -314,6 +328,50 @@ class Database {
       }
     }
     return state;
+  }
+
+  // --- Pins ------------------------------------------------------------
+  // Pins are user-bookmarked tiles. UNIQUE(tile_key, group_mode) means
+  // adding an already-pinned tile is a no-op (INSERT OR IGNORE).
+
+  getPins() {
+    return this.db.prepare(`
+      SELECT id, tile_key, group_mode, label, category, color_hex, created_at
+      FROM pins
+      ORDER BY created_at DESC
+    `).all().map(r => ({
+      id: r.id,
+      tileKey: r.tile_key,
+      groupMode: r.group_mode,
+      label: r.label,
+      category: r.category,
+      colorHex: r.color_hex,
+      createdAt: r.created_at,
+    }));
+  }
+
+  addPin({ tileKey, groupMode, label, category, colorHex }) {
+    const stmt = this.db.prepare(`
+      INSERT OR IGNORE INTO pins (tile_key, group_mode, label, category, color_hex)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(tileKey, groupMode, label, category || null, colorHex || null);
+    return { inserted: result.changes > 0 };
+  }
+
+  removePin({ tileKey, groupMode }) {
+    const stmt = this.db.prepare(`
+      DELETE FROM pins WHERE tile_key = ? AND group_mode = ?
+    `);
+    const result = stmt.run(tileKey, groupMode);
+    return { removed: result.changes > 0 };
+  }
+
+  isPinned({ tileKey, groupMode }) {
+    const row = this.db.prepare(`
+      SELECT 1 FROM pins WHERE tile_key = ? AND group_mode = ? LIMIT 1
+    `).get(tileKey, groupMode);
+    return !!row;
   }
 
   markMomentProcessed(id, landscape) {

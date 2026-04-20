@@ -28,12 +28,8 @@ jurni-nuclear/
 │   │   ├── squarify.js          # Squarified treemap layout algorithm
 │   │   └── landscape-theme.js   # Category → color palette mapping
 │   └── screens/        # Page-level screens
-│       ├── LifeLandscape.jsx # Main dashboard: treemap of life topics
-│       ├── ScoreScreen.jsx   # (legacy) Whoop-style score ring
-│       ├── Timeline.jsx      # Chronological moment feed
-│       ├── People.jsx        # Entity list + detail view
-│       ├── Patterns.jsx      # Detected behavioral patterns
-│       ├── Settings.jsx      # API key, import, data management
+│       ├── LifeLandscape.jsx # The app. Treemap with 4 group modes (topic, domain, people, time)
+│       ├── Settings.jsx      # API key, import, models, pins-agnostic utility screen
 │       └── Onboarding.jsx    # "HER" welcome + setup flow
 ├── channels/           # Ingestion modules
 │   ├── conversation.js    # Claude/ChatGPT JSON import parser
@@ -57,6 +53,7 @@ jurni-nuclear/
 - **decisions** — Decisions discussed in conversations, tracked for loops.
 - **scores** — Daily Life Recovery Score snapshots (overall + 5 dimensions).
 - **config** — Key-value settings store.
+- **pins** — User-marked tiles surfaced in the sidebar. `UNIQUE(tile_key, group_mode)` because the same label can mean different things across modes (a topic vs a person).
 
 ### Landscape fields on `moments`
 
@@ -156,11 +153,14 @@ analysis batch and on app startup if there's a backlog.
 
 ## Onboarding Flow
 
-1. **Welcome** — Cinematic tagline
-2. **API Key** — OpenRouter key input
-3. **Connect Sources** — Three connector cards (Claude, ChatGPT, Photos) + calendar coming soon. Each can toggle on a browser window or folder picker. Historical JSON import as secondary option.
-4. **Discovering** — The "HER" moment. Live counters (moments, emotions, people, patterns), scrolling discovery log, animated score ring. Polls database every 2s. Score preview appears when ready.
-5. **Dashboard** — Full app with sidebar nav. Score screen shows skeleton/loading state while data processes, updates in real-time.
+1. **Welcome** — Jurni logo + italic-serif tagline on the app shell (same CSS variables as the landscape so the transition into the app is seamless).
+2. **API Key** — OpenRouter key input. **Validated via `validate-openrouter-key` IPC** (hits `GET https://openrouter.ai/api/v1/auth/key`) before the key is persisted. Invalid/revoked/typo'd keys surface an inline error; a successful check shows the key label and remaining credit.
+3. **Identity** — Name + aliases (required). Persisted via `set-user-identity` so the user isn't extracted as a stranger in their own conversations.
+4. **Connect Sources** — Three connector cards (Claude, ChatGPT, Photos) + calendar coming soon. Each can toggle on a browser window or folder picker. Historical JSON import as secondary option inside each card.
+5. **Discovering** — Live counters (moments, emotions, people, patterns), scrolling discovery log, animated score ring. Polls database every 2s. Score preview appears when ready.
+6. **Dashboard** — Full app with sidebar nav. Score screen shows skeleton/loading state while data processes, updates in real-time.
+
+All steps render on `var(--shell)` with `var(--surface)` cards, Georgia-italic headings and DM Sans body text — no Tailwind palette classes — so light/dark theming works from the first frame.
 
 ## Score Dimensions (20 pts each, 100 total)
 
@@ -175,9 +175,59 @@ analysis batch and on app startup if there's a backlog.
 ## Design System
 
 - **Fonts**: Playfair Display (display), Georgia (serif in Landscape), DM Sans (body)
-- **Shell**: Cream bg, terracotta accent, sage/amber secondary, charcoal text
-- **Landscape**: Dark warm "journal by candlelight" palette — `#2A1E15` bg, `#F5EBD8` text. Each life category has its own warm-earth gradient (see `src/lib/landscape-theme.js`). Small tiles use flat fills; large tiles use gradients. Sparklines, italic serif for topic names.
+- **Theme tokens** in `src/index.css`: `--shell`, `--surface`, `--text-primary`, `--text-muted`, `--border`, `--accent`, `--hover-overlay` and a few soft-accent variants. Defined under `[data-theme="light"]` (default, warm cream like Claude's light mode) and `[data-theme="dark"]` (warm brown). Toggled via `data-theme` on `<html>`; persisted in `localStorage["jurni_theme"]`. The whole shell (sidebar, landscape frame, drill drawer, scrubber, settings panel) reads from these tokens — only tile category colors stay hardcoded because they encode data, not chrome.
+- **Landscape**: Edge-to-edge surface that fills the viewport (no more "card on page" look). Italic serif narrative acts as the hero — when no narrative is ready, a time-anchored greeting takes its place so the top is never empty. Each life category has its own warm-earth gradient (see `src/lib/landscape-theme.js`). Small tiles use flat fills; large tiles use gradients. Sparklines, italic serif for topic names.
+- **Sidebar**: Pure chrome — Jurni wordmark (returns to landscape), pinned list, theme toggle (Sun/Moon), Settings. No traditional nav items.
 - **Score colors** (legacy): Green (70+), Yellow (40-69), Red (0-39)
+
+### Tile chat
+
+Each tile can be chatted with: an open-ended conversation scoped to that
+tile's moments, people, and briefing. Lives at the bottom of the drill
+drawer.
+
+- **Prompt**: a system message injects the tile metadata, top 12 stories,
+  top 10 people, and the cached briefing (if any). User's messages + the
+  last 20 turns are appended as the conversation history.
+- **IPC**: `chat-with-tile` handler takes `{ key, group, range, weekOffset,
+  messages }` and returns `{ ok, reply, error }`. No streaming yet; the
+  whole response arrives at once. Typing indicator while waiting.
+- **Model**: `landscape_model` (Gemini Flash by default) at temp 0.4,
+  max 700 tokens.
+- **Persistence**: in-memory per-drawer only. Closing the drawer wipes
+  the chat. Re-opening the same tile starts fresh. A `tile_chats` table
+  is easy to add later when persistence is desired.
+- **Empty state**: category-aware suggestion chips ("What's my next move?",
+  "What's blocking progress?", etc.) so the user isn't staring at a box.
+- **Graceful degradation**: disabled when tile has no stories, or when no
+  API key is set. The input shows the reason in its placeholder.
+
+### Focused pin view
+
+Clicking a pin in the sidebar opens that tile in a focused view: the
+drawer only, no landscape behind it. A "← Landscape" pill returns to
+the full view. Clicking a tile inline from the treemap stays in the
+standard side-by-side mode. The distinction is about intent: pins are
+"I know what I want", tile clicks are "I'm exploring".
+
+### Pins
+
+A pin is "this tile in this view I want to come back to." Stored in the
+`pins` table keyed by `(tile_key, group_mode)`. The same label can appear
+in multiple group modes (e.g. "Clinera" as a topic vs a person) — pins
+respect that so you can bookmark both independently.
+
+- **Toggle**: pin button sits in the drill drawer header, right before the
+  close X. Filled when pinned, outline otherwise.
+- **Sidebar**: `pins` state lives in `App.jsx`, loaded via `getPins` on
+  mount and re-loaded whenever the main process emits `pins-changed`.
+- **Open flow**: clicking a pin in the sidebar calls `onOpenPin(pin)` which
+  sets `pinToOpen` in App state. `LifeLandscape` watches for it, switches
+  `group` mode if the pin was created in a different mode, and sets the
+  tile active so the drawer opens. Once the landscape data refreshes the
+  active tile's stats upgrade to the full tile object.
+- **IPC**: `get-pins`, `add-pin`, `remove-pin` + a `pins-changed` broadcast
+  so every window stays in sync.
 
 ### Life Landscape UX rules
 
@@ -225,7 +275,11 @@ Every key step is logged: sniffer hits (org ID, endpoints, headers), API fetches
 - [x] User identity resolution foundation — name + aliases in Settings/Onboarding; user filtered from entities, topics, and People landscape. Email-shaped names blocked from being stored as person entities.
 - [x] **Idempotent ingestion** — `moments` has a `content_hash` column and a `UNIQUE(source, timestamp, content_hash)` index. `insertMoment` uses `INSERT OR IGNORE` and returns `{id, inserted}`. Re-running the Claude crawler is now safe: duplicates are skipped at the DB layer, never counted, never re-processed. First-time migration backfills hashes on every existing row and deletes dupes (cleaning up orphaned emotions as it goes).
 - [x] **Manual "Sync now"** — Settings → Sync Conversations exposes a per-provider Sync button. Spawns a hidden connector window in the persistent login partition, lets the existing crawler run, and reports +N new / M already-had via a live `sync-progress` IPC channel. 5-minute hard timeout. One active session per provider at a time.
-- [x] Timeline, People, Patterns screens
+- [x] **Pinning** — pin any tile from its drill drawer, revisit instantly from the sidebar. Cross-mode (topic vs person vs time) aware. Survives restarts via the `pins` table.
+- [x] **Tile chat** — conversational Q&A inside each drill drawer. LLM sees the tile's stories + people + briefing as context, answers in free text. Category-aware suggestion prompts when the chat is empty. In-memory per-drawer history (no persistence yet).
+- [x] **Focused pin view** — clicking a pin in the sidebar opens the tile in a drawer-only view (no landscape behind). Back button returns to full landscape.
+- [x] **Theme toggle** — warm light (default) / warm dark, flipped via CSS variables. Whole shell re-palettes in one click. Persisted in localStorage.
+- [x] **Shell simplification** — removed Timeline, People, Patterns screens. Landscape is the app; its grouping modes (Topics, Domains, People, Timeline) cover what those screens used to do.
 - [x] Settings with import + API key management
 - [x] Onboarding: Welcome → API Key → Connect Sources (3 cards) → Score Reveal
 - [x] Menu bar tray icon

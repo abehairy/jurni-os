@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import LifeLandscape from './screens/LifeLandscape';
 import Settings from './screens/Settings';
 import Onboarding from './screens/Onboarding';
+import logoUrl from './assets/logo.png';
 
 const api = window.jurni || createMockApi();
 
@@ -11,6 +12,7 @@ function createMockApi() {
   return {
     getConfig: async () => ({}),
     setConfig: async () => true,
+    validateOpenRouterKey: async () => ({ ok: true }),
     getDashboardData: async () => ({ scores: null, stats: { momentCount: 0 }, patterns: [], topInsights: [] }),
     getScores: async () => null,
     getMoments: async () => [],
@@ -29,6 +31,10 @@ function createMockApi() {
     getConnectorStatus: async () => ({ isOpen: false, enabled: false }),
     syncProvider: async () => ({ ok: false, error: 'Not running in Electron' }),
     onSyncProgress: () => () => { },
+    getPins: async () => [],
+    addPin: async () => ({ ok: false, error: 'Not running in Electron' }),
+    removePin: async () => ({ ok: false, error: 'Not running in Electron' }),
+    onPinsChanged: () => () => { },
     selectPhotosFolder: async () => null,
     onConnectorStatus: () => () => { },
     onNewMoment: () => () => { },
@@ -38,6 +44,7 @@ function createMockApi() {
     getLandscape: async () => ({ tiles: [], period: { start: '', end: '', group: 'topic' }, threadStats: { total: 0, pending: 0, done: 0 } }),
     getTileDetail: async () => ({ stories: [], people: [], totalMentions: 0, threadCount: 0 }),
     getTileBriefing: async () => null,
+    chatWithTile: async () => ({ ok: false, error: 'Not running in Electron' }),
     recategorizeMoments: async () => ({ ok: false, error: 'Not running in Electron' }),
     rereadAllThreads: async () => ({ ok: false, error: 'Not running in Electron' }),
     getAvailableModels: async () => ({ landscape: [], analysis: [] }),
@@ -55,6 +62,37 @@ export default function App() {
   const [hasData, setHasData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [forceOnboarding, setForceOnboarding] = useState(false);
+  const [pins, setPins] = useState([]);
+  const [pinToOpen, setPinToOpen] = useState(null);
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('jurni_theme') || 'light';
+    } catch {
+      return 'light';
+    }
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem('jurni_theme', theme); } catch {}
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
+
+  // Pins: load on mount, refresh on 'pins-changed' events from main process.
+  const refreshPins = async () => {
+    try { setPins(await api.getPins()); } catch {}
+  };
+  useEffect(() => {
+    refreshPins();
+    const off = api.onPinsChanged?.(refreshPins);
+    return () => off?.();
+  }, []);
+
+  const handleOpenPin = (pin) => {
+    setCurrentScreen('landscape');
+    setPinToOpen(pin);
+  };
 
   useEffect(() => {
     init();
@@ -98,10 +136,17 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-cream">
+      <div className="h-screen flex items-center justify-center" style={{ background: 'var(--shell)' }}>
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
-          <h1 className="font-display text-4xl text-charcoal mb-2">Jurni</h1>
-          <p className="text-warm-gray font-light">Loading your life patterns...</p>
+          <img
+            src={logoUrl}
+            alt="Jurni"
+            width={88}
+            height={88}
+            style={{ display: 'inline-block', marginBottom: 18 }}
+          />
+          <h1 className="font-display text-4xl mb-2" style={{ color: 'var(--text-primary)' }}>Jurni</h1>
+          <p className="font-light" style={{ color: 'var(--text-muted)' }}>Loading your dashboard…</p>
         </motion.div>
       </div>
     );
@@ -112,17 +157,37 @@ export default function App() {
   }
 
   const screens = {
-    landscape: <LifeLandscape api={api} onGoToSettings={() => setCurrentScreen('settings')} />,
+    landscape: (
+      <LifeLandscape
+        api={api}
+        onGoToSettings={() => setCurrentScreen('settings')}
+        pins={pins}
+        onPinsChanged={refreshPins}
+        pinToOpen={pinToOpen}
+        onPinOpened={() => setPinToOpen(null)}
+      />
+    ),
     settings: <Settings api={api} config={config} setConfig={setConfig} onReset={handleReset} />,
   };
 
   // Guard against stale localStorage keys or code paths trying to navigate to deleted screens
   const activeScreen = screens[currentScreen] ? currentScreen : 'landscape';
 
+  // Paint <main> with the same bg as the current screen's surface so the
+  // titlebar-drag strip visually continues the screen (no seam at top).
+  const mainBg = activeScreen === 'settings' ? 'var(--shell)' : 'var(--surface)';
+
   return (
-    <div className="h-screen flex overflow-hidden bg-cream">
-      <Sidebar current={activeScreen} onNavigate={setCurrentScreen} />
-      <main className="flex-1 overflow-y-auto">
+    <div className="h-screen flex overflow-hidden">
+      <Sidebar
+        current={activeScreen}
+        onNavigate={setCurrentScreen}
+        pins={pins}
+        onOpenPin={handleOpenPin}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
+      <main className="flex-1 overflow-y-auto" style={{ background: mainBg }}>
         <div className="titlebar-drag h-8 flex-shrink-0" />
         <AnimatePresence mode="wait">
           <motion.div
@@ -131,7 +196,6 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
-            className="px-8 pb-8"
           >
             {screens[activeScreen]}
           </motion.div>

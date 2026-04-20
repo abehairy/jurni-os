@@ -9,6 +9,17 @@ these can cause failure osf the app so our app must handle them and always
 
 ---
 
+## Shell / UX — done this session
+- Removed Timeline, People, Patterns as separate pages. They're group modes
+  inside the Landscape now. Landscape IS the app.
+- CSS-variable theme system with warm-light (default) / warm-dark toggle.
+  Adding a third theme is just another `[data-theme="x"]` block in index.css.
+- Landscape goes edge-to-edge (no more "card on page" look). Sidebar + main
+  share one surface.
+- Pinning: pin button in the drill drawer, live pinned list in sidebar.
+  Click a pin → switches group mode if needed, opens the drawer instantly.
+  Backed by a `pins` table with `UNIQUE(tile_key, group_mode)`.
+
 ## Smart sync (Systrom-style) — partially done, expand later
 Reframe: we don't need live capture, we need it to FEEL live. User opens app,
 we sync during their first 20–60 seconds of looking at the landscape.

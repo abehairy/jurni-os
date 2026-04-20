@@ -1,23 +1,38 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Key, ArrowRight, Sparkles, AlertCircle, MessageSquare, Image,
   CalendarDays, Upload, ToggleLeft, ToggleRight, FileJson, Heart,
-  Brain, Users, Waves, Activity, User,
+  Users, Waves, User, Loader2, CheckCircle2,
 } from 'lucide-react';
 import ScoreRing from '../components/ScoreRing';
-import DimensionBars from '../components/DimensionBars';
+import logoUrl from '../assets/logo.png';
 
+/**
+ * First-run flow. Five steps:
+ *   welcome → apikey → identity → connectors → discovering
+ *
+ * Styling uses the same CSS variables as the rest of the app so the shell
+ * feels continuous (no jarring cream pop into a dark landscape).
+ */
 export default function Onboarding({ api, config, onComplete }) {
   const [step, setStep] = useState(() => {
     if (!config.openrouter_api_key) return 'welcome';
     if (!config.user_name) return 'identity';
     return 'connectors';
   });
+
+  // ---- API key ----
   const [apiKey, setApiKey] = useState(config.openrouter_api_key || '');
+  const [keyChecking, setKeyChecking] = useState(false);
+  const [keyError, setKeyError] = useState(null);
+  const [keyInfo, setKeyInfo] = useState(null);
+
+  // ---- Identity ----
   const [identityName, setIdentityName] = useState(config.user_name || '');
   const [identityAliases, setIdentityAliases] = useState(config.user_aliases || '');
 
+  // ---- Connectors ----
   const [connectors, setConnectors] = useState({
     claude: { enabled: false, status: 'idle', capturedCount: 0 },
     chatgpt: { enabled: false, status: 'idle', capturedCount: 0 },
@@ -29,7 +44,7 @@ export default function Onboarding({ api, config, onComplete }) {
   const [importProgress, setImportProgress] = useState(null);
   const [importError, setImportError] = useState(null);
 
-  // Ingestion / discovery counters
+  // ---- Discovering counters ----
   const [counters, setCounters] = useState({
     moments: 0, emotions: 0, patterns: 0, people: 0,
   });
@@ -50,7 +65,6 @@ export default function Onboarding({ api, config, onComplete }) {
             capturedCount: status.capturedCount ?? prev[status.provider]?.capturedCount ?? 0,
           },
         }));
-        // Feed crawl progress into discovery log
         if (status.message && step === 'discovering') {
           addDiscoveryLine(status.message);
         }
@@ -72,11 +86,10 @@ export default function Onboarding({ api, config, onComplete }) {
     loadConnectorStates();
   }, [api]);
 
-  // Poll for data during the "discovering" step
+  // Poll for data during discovery
   useEffect(() => {
     if (step !== 'discovering') return;
     let active = true;
-
     const poll = async () => {
       while (active) {
         try {
@@ -88,7 +101,6 @@ export default function Onboarding({ api, config, onComplete }) {
               patterns: stats.patternCount || 0,
               people: stats.entityCount || 0,
             };
-            // Add discovery log lines for new milestones
             if (updated.moments > prev.moments && updated.moments % 5 === 0) {
               addDiscoveryLine(`${updated.moments} moments ingested...`);
             }
@@ -96,30 +108,25 @@ export default function Onboarding({ api, config, onComplete }) {
               addDiscoveryLine(`${updated.emotions} emotions detected`);
             }
             if (updated.patterns > prev.patterns) {
-              addDiscoveryLine(`New pattern discovered — ${updated.patterns} total`);
+              addDiscoveryLine(`Another signal — ${updated.patterns} so far`);
             }
             if (updated.people > prev.people) {
               addDiscoveryLine(`${updated.people} people identified`);
             }
             return updated;
           });
-
           const latestScores = await api.getScores();
           if (latestScores) setScores(latestScores);
         } catch (e) { /* ignore */ }
-
         await new Promise(r => setTimeout(r, 2000));
       }
     };
-
     addDiscoveryLine('Connecting to your sources...');
     setTimeout(() => addDiscoveryLine('Watching for conversations...'), 1500);
-
     poll();
     return () => { active = false; };
   }, [step, api]);
 
-  // Listen for import progress during the discovering step
   useEffect(() => {
     if (step !== 'discovering') return;
     const cleanup = api.onImportProgress?.((p) => {
@@ -132,10 +139,31 @@ export default function Onboarding({ api, config, onComplete }) {
     setDiscoveryLines(prev => [...prev.slice(-12), { text, id: Date.now() + Math.random() }]);
   }
 
+  // Validate the OpenRouter key with a single auth-check call before
+  // moving past the API key step. Prevents the "silent typo" failure mode.
   const handleSaveKey = async () => {
-    if (!apiKey.trim()) return;
-    await api.setConfig('openrouter_api_key', apiKey.trim());
-    setStep('identity');
+    const trimmed = apiKey.trim();
+    if (!trimmed) return;
+    setKeyError(null);
+    setKeyInfo(null);
+    setKeyChecking(true);
+    try {
+      const result = await api.validateOpenRouterKey?.(trimmed);
+      if (!result || !result.ok) {
+        setKeyError(result?.reason || 'Could not validate the key');
+        setKeyChecking(false);
+        return;
+      }
+      // Persist only after validation passes
+      await api.setConfig('openrouter_api_key', trimmed);
+      setKeyInfo(result.data || null);
+      setKeyChecking(false);
+      // Tiny delay so user sees the ✓ before transition
+      setTimeout(() => setStep('identity'), 420);
+    } catch (e) {
+      setKeyError(e.message || 'Validation failed');
+      setKeyChecking(false);
+    }
   };
 
   const handleSaveIdentity = async () => {
@@ -178,7 +206,6 @@ export default function Onboarding({ api, config, onComplete }) {
     if (!filePath) return;
     setImportError(null);
     setImportProgress({ stage: 'starting', message: 'Starting import...' });
-
     const cleanup = api.onImportProgress((p) => setImportProgress(p));
     try {
       const result = await api.importConversations(filePath);
@@ -199,55 +226,89 @@ export default function Onboarding({ api, config, onComplete }) {
   const hasAnyConnector = connectors.claude.enabled || connectors.chatgpt.enabled ||
     connectors.photos.enabled || importProgress?.stage === 'complete';
 
-  const handleContinueToDiscovery = () => {
-    setStep('discovering');
-  };
-
-  const handleGoToDashboard = () => {
-    onComplete();
+  const containerStyle = {
+    height: '100vh',
+    width: '100vw',
+    background: 'var(--shell)',
+    color: 'var(--text-primary)',
+    fontFamily: 'DM Sans, system-ui, sans-serif',
+    overflow: 'hidden',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   };
 
   return (
-    <div className="h-screen flex items-center justify-center bg-cream overflow-hidden">
+    <div style={containerStyle}>
       <AnimatePresence mode="wait">
 
-        {/* ---- STEP 1: Welcome ---- */}
+        {/* ---- Welcome ---- */}
         {step === 'welcome' && (
           <FadeStep key="welcome">
-            <div className="text-center max-w-lg">
+            <div style={{ textAlign: 'center', maxWidth: 520 }}>
+              <motion.img
+                src={logoUrl}
+                alt="Jurni"
+                width={110}
+                height={110}
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                style={{ display: 'inline-block', marginBottom: 26 }}
+              />
               <motion.h1
-                className="font-display text-5xl text-charcoal mb-4 leading-tight"
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8 }}
+                transition={{ delay: 0.2, duration: 0.8 }}
+                style={{
+                  fontFamily: 'Georgia, serif',
+                  fontStyle: 'italic',
+                  fontSize: 42,
+                  lineHeight: 1.2,
+                  color: 'var(--text-primary)',
+                  marginBottom: 16,
+                  letterSpacing: -0.3,
+                }}
               >
-                Your life has patterns<br />you can't see.
+                A dashboard<br />for your life.
               </motion.h1>
               <motion.p
-                className="text-lg text-warm-gray font-light mb-2"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 0.6, duration: 0.8 }}
+                transition={{ delay: 0.7, duration: 0.8 }}
+                style={{
+                  fontSize: 16,
+                  color: 'var(--text-muted)',
+                  marginBottom: 10,
+                }}
               >
-                Jurni sees them.
+                Clarity, not noise.
               </motion.p>
               <motion.p
-                className="text-sm text-warm-gray/60 mb-10 max-w-sm mx-auto"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 1.2, duration: 0.8 }}
+                transition={{ delay: 1.1, duration: 0.8 }}
+                style={{
+                  fontSize: 13,
+                  color: 'var(--text-muted)',
+                  opacity: 0.8,
+                  marginBottom: 36,
+                  lineHeight: 1.6,
+                  maxWidth: 400,
+                  marginLeft: 'auto',
+                  marginRight: 'auto',
+                }}
               >
-                Connect your AI conversations, photos, and calendar.
-                Jurni analyzes them locally on your device and reveals your
-                mental, emotional, and relational patterns.
+                Jurni quietly reads what you're already doing — your conversations,
+                photos, calendar — and turns it into one clear view of where you stand.
+                So you can decide what matters next, without over-thinking it.
               </motion.p>
               <motion.button
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 1.8 }}
+                transition={{ delay: 1.5 }}
                 onClick={() => setStep('apikey')}
-                className="px-8 py-3 bg-terracotta text-white rounded-xl font-medium
-                           hover:bg-terracotta-dark transition-colors flex items-center gap-2 mx-auto"
+                style={primaryBtn()}
               >
                 Get Started <ArrowRight size={16} />
               </motion.button>
@@ -255,107 +316,137 @@ export default function Onboarding({ api, config, onComplete }) {
           </FadeStep>
         )}
 
-        {/* ---- STEP 2: API Key ---- */}
+        {/* ---- API key ---- */}
         {step === 'apikey' && (
           <FadeStep key="apikey">
-            <div className="max-w-md w-full">
-              <div className="text-center mb-8">
-                <Key size={32} className="text-terracotta mx-auto mb-3" />
-                <h2 className="font-display text-2xl mb-2">Connect to AI</h2>
-                <p className="text-sm text-warm-gray">
-                  Jurni uses AI to understand your conversations.
-                  Your data stays on your machine — only anonymized chunks are sent for analysis.
+            <div style={{ maxWidth: 440, width: '100%' }}>
+              <div style={{ textAlign: 'center', marginBottom: 28 }}>
+                <div style={iconBadge()}>
+                  <Key size={20} style={{ color: 'var(--accent)' }} />
+                </div>
+                <h2 style={sectionHeading()}>Connect to AI</h2>
+                <p style={sectionSubheading()}>
+                  Jurni uses AI to read your conversations. Everything stays on
+                  your machine — only anonymized chunks ever leave it.
                 </p>
               </div>
-              <div className="glass-card p-6">
-                <label className="text-sm font-medium text-charcoal block mb-2">
-                  OpenRouter API Key
-                </label>
+              <div style={card()}>
+                <label style={label()}>OpenRouter API Key</label>
                 <input
                   type="password"
                   value={apiKey}
-                  onChange={e => setApiKey(e.target.value)}
+                  onChange={e => { setApiKey(e.target.value); setKeyError(null); }}
                   placeholder="sk-or-v1-..."
-                  className="w-full px-3 py-2.5 bg-white/60 border border-cream-dark rounded-lg text-sm
-                             focus:outline-none focus:ring-2 focus:ring-terracotta/30 mb-3"
                   autoFocus
+                  disabled={keyChecking}
                   onKeyDown={e => e.key === 'Enter' && handleSaveKey()}
+                  style={input()}
                 />
-                <a href="https://openrouter.ai/keys" target="_blank" rel="noopener"
-                  className="text-xs text-terracotta underline mb-4 block">
+                <a
+                  href="https://openrouter.ai/keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--accent)',
+                    textDecoration: 'underline',
+                    display: 'block',
+                    marginTop: 10,
+                    marginBottom: 16,
+                  }}
+                >
                   Don't have one? Get a key at openrouter.ai/keys
                 </a>
-                <button onClick={handleSaveKey} disabled={!apiKey.trim()}
-                  className="w-full px-4 py-2.5 bg-terracotta text-white rounded-lg font-medium
-                    hover:bg-terracotta-dark transition-colors disabled:opacity-50
-                    flex items-center justify-center gap-2">
-                  Continue <ArrowRight size={16} />
+
+                {keyError && (
+                  <div style={errorBox()}>
+                    <AlertCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                    <span>{keyError}</span>
+                  </div>
+                )}
+                {keyInfo && !keyError && (
+                  <div style={successBox()}>
+                    <CheckCircle2 size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                    <span>
+                      Key verified{keyInfo.label ? ` — ${keyInfo.label}` : ''}
+                      {typeof keyInfo.limit === 'number' && typeof keyInfo.usage === 'number'
+                        ? ` · $${(keyInfo.limit - keyInfo.usage).toFixed(2)} remaining`
+                        : ''}
+                    </span>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSaveKey}
+                  disabled={!apiKey.trim() || keyChecking}
+                  style={primaryBtn({ full: true, disabled: !apiKey.trim() || keyChecking })}
+                >
+                  {keyChecking ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      Verifying…
+                    </>
+                  ) : (
+                    <>
+                      Continue <ArrowRight size={16} />
+                    </>
+                  )}
                 </button>
               </div>
             </div>
           </FadeStep>
         )}
 
-        {/* ---- STEP 2.5: Who You Are ---- */}
+        {/* ---- Identity ---- */}
         {step === 'identity' && (
           <FadeStep key="identity">
-            <div className="max-w-md w-full">
-              <div className="text-center mb-8">
-                <User size={32} className="text-terracotta mx-auto mb-3" />
-                <h2 className="font-display text-2xl mb-2">Who are you?</h2>
-                <p className="text-sm text-warm-gray">
-                  Jurni reads conversations from your own point of view.
-                  Without your name, you'd show up as a stranger inside your own life.
+            <div style={{ maxWidth: 440, width: '100%' }}>
+              <div style={{ textAlign: 'center', marginBottom: 28 }}>
+                <div style={iconBadge()}>
+                  <User size={20} style={{ color: 'var(--accent)' }} />
+                </div>
+                <h2 style={sectionHeading()}>Who are you?</h2>
+                <p style={sectionSubheading()}>
+                  Jurni reads your conversations from your own point of view.
+                  Without your name, you'd show up as a stranger in your own
+                  dashboard.
                 </p>
               </div>
-              <div className="glass-card p-6 space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-charcoal block mb-2">
-                    Your name
-                  </label>
-                  <input
-                    type="text"
-                    value={identityName}
-                    onChange={e => setIdentityName(e.target.value)}
-                    placeholder="e.g. Ahmed Behairy"
-                    className="w-full px-3 py-2.5 bg-white/60 border border-cream-dark rounded-lg text-sm
-                      focus:outline-none focus:ring-2 focus:ring-terracotta/30"
-                    autoFocus
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && identityName.trim()) handleSaveIdentity();
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-charcoal block mb-2">
-                    Also known as{' '}
-                    <span className="text-warm-gray/70 font-normal text-xs">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={identityAliases}
-                    onChange={e => setIdentityAliases(e.target.value)}
-                    placeholder="Beh, Behairy, Ahmed B."
-                    className="w-full px-3 py-2.5 bg-white/60 border border-cream-dark rounded-lg text-sm
-                      focus:outline-none focus:ring-2 focus:ring-terracotta/30"
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && identityName.trim()) handleSaveIdentity();
-                    }}
-                  />
-                  <p className="text-xs text-warm-gray/70 mt-1.5">
-                    Comma-separated. Nicknames, short forms, how people address you.
-                  </p>
-                </div>
+              <div style={card()}>
+                <label style={label()}>Your name</label>
+                <input
+                  type="text"
+                  value={identityName}
+                  onChange={e => setIdentityName(e.target.value)}
+                  placeholder="e.g. Ahmed Behairy"
+                  autoFocus
+                  onKeyDown={e => { if (e.key === 'Enter' && identityName.trim()) handleSaveIdentity(); }}
+                  style={input()}
+                />
+
+                <label style={{ ...label(), marginTop: 18 }}>
+                  Also known as <span style={{ color: 'var(--text-muted)', fontSize: 11, opacity: 0.75 }}>(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={identityAliases}
+                  onChange={e => setIdentityAliases(e.target.value)}
+                  placeholder="Beh, Behairy, Ahmed B."
+                  onKeyDown={e => { if (e.key === 'Enter' && identityName.trim()) handleSaveIdentity(); }}
+                  style={input()}
+                />
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', opacity: 0.8, marginTop: 6, marginBottom: 18 }}>
+                  Comma-separated. Nicknames, short forms, how people address you.
+                </p>
+
                 <button
                   onClick={handleSaveIdentity}
                   disabled={!identityName.trim()}
-                  className="w-full px-4 py-2.5 bg-terracotta text-white rounded-lg font-medium
-                    hover:bg-terracotta-dark transition-colors disabled:opacity-50
-                    flex items-center justify-center gap-2"
+                  style={primaryBtn({ full: true, disabled: !identityName.trim() })}
                 >
                   Continue <ArrowRight size={16} />
                 </button>
-                <p className="text-xs text-warm-gray/70 text-center leading-relaxed">
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: 14, opacity: 0.8 }}>
                   You can change this anytime in Settings.
                 </p>
               </div>
@@ -363,86 +454,94 @@ export default function Onboarding({ api, config, onComplete }) {
           </FadeStep>
         )}
 
-        {/* ---- STEP 3: Connect Sources ---- */}
+        {/* ---- Connectors ---- */}
         {step === 'connectors' && (
           <FadeStep key="connectors">
-            <div className="max-w-xl w-full">
-              <div className="text-center mb-8">
-                <h2 className="font-display text-3xl mb-2">Connect Your Sources</h2>
-                <p className="text-sm text-warm-gray">
+            <div style={{ maxWidth: 600, width: '100%' }}>
+              <div style={{ textAlign: 'center', marginBottom: 28 }}>
+                <h2 style={{ ...sectionHeading(), fontSize: 30 }}>Connect your sources</h2>
+                <p style={sectionSubheading()}>
                   The more you connect, the richer your patterns. Enable at least one.
                 </p>
               </div>
 
-              <div className="space-y-4">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <ConnectorCard
-                  icon={MessageSquare} title="Claude"
-                  description="Sign in to claude.ai. Jurni observes your conversations."
+                  icon={MessageSquare}
+                  title="Claude"
+                  description="Sign in to claude.ai. Jurni reads your conversations as they happen."
                   enabled={connectors.claude.enabled}
                   status={connectors.claude.status}
                   capturedCount={connectors.claude.capturedCount}
                   lastMessage={connectors.claude.lastMessage}
                   onToggle={() => handleToggleConnector('claude')}
-                  accentColor="terracotta"
                 >
-                  <button onClick={() => setShowImport(showImport === 'claude' ? null : 'claude')}
-                    className="text-xs text-warm-gray hover:text-charcoal-light mt-2 flex items-center gap-1">
-                    <FileJson size={12} />
-                    {showImport === 'claude' ? 'Hide' : 'Or import historical data (JSON export)'}
-                  </button>
-                  {showImport === 'claude' && (
-                    <ImportSection onImport={handleHistoricalImport}
-                      progress={importProgress} error={importError}
-                      hint="Claude: Settings → Export" />
-                  )}
+                  <InlineImportToggle
+                    open={showImport === 'claude'}
+                    onToggle={() => setShowImport(showImport === 'claude' ? null : 'claude')}
+                    onImport={handleHistoricalImport}
+                    progress={importProgress}
+                    error={importError}
+                    hint="Claude: Settings → Export"
+                  />
                 </ConnectorCard>
 
                 <ConnectorCard
-                  icon={MessageSquare} title="ChatGPT"
-                  description="Sign in to chatgpt.com. Jurni observes your conversations."
+                  icon={MessageSquare}
+                  title="ChatGPT"
+                  description="Sign in to chatgpt.com. Jurni reads your conversations as they happen."
                   enabled={connectors.chatgpt.enabled}
                   status={connectors.chatgpt.status}
                   capturedCount={connectors.chatgpt.capturedCount}
                   lastMessage={connectors.chatgpt.lastMessage}
                   onToggle={() => handleToggleConnector('chatgpt')}
-                  accentColor="terracotta"
                 >
-                  <button onClick={() => setShowImport(showImport === 'chatgpt' ? null : 'chatgpt')}
-                    className="text-xs text-warm-gray hover:text-charcoal-light mt-2 flex items-center gap-1">
-                    <FileJson size={12} />
-                    {showImport === 'chatgpt' ? 'Hide' : 'Or import historical data (JSON export)'}
-                  </button>
-                  {showImport === 'chatgpt' && (
-                    <ImportSection onImport={handleHistoricalImport}
-                      progress={importProgress} error={importError}
-                      hint="ChatGPT: Settings → Data Controls → Export" />
-                  )}
+                  <InlineImportToggle
+                    open={showImport === 'chatgpt'}
+                    onToggle={() => setShowImport(showImport === 'chatgpt' ? null : 'chatgpt')}
+                    onImport={handleHistoricalImport}
+                    progress={importProgress}
+                    error={importError}
+                    hint="ChatGPT: Settings → Data Controls → Export"
+                  />
                 </ConnectorCard>
 
-                <ConnectorCard icon={Image} title="Photos"
+                <ConnectorCard
+                  icon={Image}
+                  title="Photos"
                   description={connectors.photos.folder ? `Watching: ${connectors.photos.folder}` : 'Select your Photos folder.'}
                   enabled={connectors.photos.enabled}
                   status={connectors.photos.enabled ? 'connected' : 'idle'}
                   onToggle={() => handleToggleConnector('photos')}
-                  accentColor="sage" />
+                />
 
-                <ConnectorCard icon={CalendarDays} title="Google Calendar"
+                <ConnectorCard
+                  icon={CalendarDays}
+                  title="Google Calendar"
                   description="Connect your calendar. Coming soon."
-                  enabled={false} status="coming_soon"
-                  onToggle={() => {}} accentColor="amber" disabled />
+                  enabled={false}
+                  status="coming_soon"
+                  onToggle={() => {}}
+                  disabled
+                />
               </div>
 
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
-                className="mt-8 flex justify-center">
-                <button onClick={handleContinueToDiscovery} disabled={!hasAnyConnector}
-                  className="px-8 py-3 bg-terracotta text-white rounded-xl font-medium
-                    hover:bg-terracotta-dark transition-colors disabled:opacity-40
-                    flex items-center gap-2">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.4 }}
+                style={{ marginTop: 28, display: 'flex', justifyContent: 'center' }}
+              >
+                <button
+                  onClick={() => setStep('discovering')}
+                  disabled={!hasAnyConnector}
+                  style={primaryBtn({ disabled: !hasAnyConnector })}
+                >
                   Continue <ArrowRight size={16} />
                 </button>
               </motion.div>
               {!hasAnyConnector && (
-                <p className="text-center text-xs text-warm-gray mt-3">
+                <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', marginTop: 10, opacity: 0.8 }}>
                   Enable a source or import data to continue
                 </p>
               )}
@@ -450,101 +549,113 @@ export default function Onboarding({ api, config, onComplete }) {
           </FadeStep>
         )}
 
-        {/* ---- STEP 4: The "HER" Discovering Moment ---- */}
+        {/* ---- Discovering ---- */}
         {step === 'discovering' && (
           <FadeStep key="discovering">
-            <div className="max-w-lg w-full">
-              {/* Animated spinner */}
-              <div className="flex justify-center mb-8">
+            <div style={{ maxWidth: 540, width: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 28 }}>
                 <motion.div
                   animate={{ rotate: 360 }}
-                  transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
-                  className="relative w-24 h-24"
+                  transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
+                  style={{ position: 'relative', width: 90, height: 90 }}
                 >
                   <motion.div
-                    className="absolute inset-0 rounded-full border-2 border-terracotta/20"
-                    animate={{ scale: [1, 1.1, 1] }}
+                    animate={{ scale: [1, 1.08, 1] }}
                     transition={{ duration: 2, repeat: Infinity }}
+                    style={{
+                      position: 'absolute', inset: 0, borderRadius: '50%',
+                      border: '2px solid var(--accent-soft-strong)',
+                    }}
                   />
-                  <motion.div
-                    className="absolute inset-2 rounded-full border-2 border-terracotta/40"
-                    animate={{ scale: [1, 0.95, 1] }}
-                    transition={{ duration: 2.5, repeat: Infinity }}
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Sparkles size={28} className="text-terracotta" />
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Sparkles size={28} style={{ color: 'var(--accent)' }} />
                   </div>
                 </motion.div>
               </div>
 
-              <h2 className="font-display text-2xl text-center mb-8">
-                {scores ? 'Your patterns are emerging...' : 'Discovering your patterns...'}
+              <h2 style={{
+                fontFamily: 'Georgia, serif', fontStyle: 'italic',
+                fontSize: 24, textAlign: 'center', marginBottom: 28,
+                color: 'var(--text-primary)',
+              }}>
+                {scores ? 'Your dashboard is coming together…' : 'Reading your last few weeks…'}
               </h2>
 
-              {/* Live counters */}
-              <div className="grid grid-cols-4 gap-3 mb-8">
-                <CounterBox icon={MessageSquare} value={counters.moments} label="Moments" delay={0} />
-                <CounterBox icon={Heart} value={counters.emotions} label="Emotions" delay={0.2} />
-                <CounterBox icon={Users} value={counters.people} label="People" delay={0.4} />
-                <CounterBox icon={Waves} value={counters.patterns} label="Patterns" delay={0.6} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 22 }}>
+                <CounterBox icon={MessageSquare} value={counters.moments} label="Moments" />
+                <CounterBox icon={Heart} value={counters.emotions} label="Emotions" />
+                <CounterBox icon={Users} value={counters.people} label="People" />
+                <CounterBox icon={Waves} value={counters.patterns} label="Signals" />
               </div>
 
-              {/* Discovery log — the cinematic text feed */}
-              <div ref={discoveryRef}
-                className="glass-card p-4 h-48 overflow-y-auto space-y-1.5">
+              <div
+                ref={discoveryRef}
+                style={{
+                  ...card(),
+                  padding: 14,
+                  height: 172,
+                  overflowY: 'auto',
+                }}
+              >
                 <AnimatePresence initial={false}>
                   {discoveryLines.map((line) => (
                     <motion.div
                       key={line.id}
-                      initial={{ opacity: 0, y: 10 }}
+                      initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.4 }}
-                      className="flex items-center gap-2"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '3px 0',
+                      }}
                     >
-                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-terracotta/40 flex-shrink-0" />
-                      <span className="text-sm text-charcoal-light">{line.text}</span>
+                      <span style={{
+                        width: 5, height: 5, borderRadius: '50%',
+                        background: 'var(--accent)', opacity: 0.55, flexShrink: 0,
+                      }} />
+                      <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{line.text}</span>
                     </motion.div>
                   ))}
                 </AnimatePresence>
                 {discoveryLines.length === 0 && (
-                  <div className="flex items-center justify-center h-full">
-                    <p className="text-warm-gray/50 text-sm">Waiting for data...</p>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    height: '100%',
+                  }}>
+                    <p style={{ color: 'var(--text-muted)', fontSize: 13, opacity: 0.7 }}>
+                      Waiting for data…
+                    </p>
                   </div>
                 )}
               </div>
 
-              {/* Score preview — appears when scores arrive */}
               <AnimatePresence>
                 {scores && (
                   <motion.div
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8 }}
-                    className="mt-6 flex justify-center"
+                    transition={{ duration: 0.6 }}
+                    style={{ marginTop: 20, display: 'flex', justifyContent: 'center' }}
                   >
-                    <ScoreRing score={scores.overall}
-                      summary={getRevealSummary(scores.overall)} />
+                    <ScoreRing score={scores.overall} summary={getRevealSummary(scores.overall)} />
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* Go to Dashboard */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 3 }}
-                className="mt-8 flex flex-col items-center gap-3"
+                transition={{ delay: 2.5 }}
+                style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}
               >
-                <button onClick={handleGoToDashboard}
-                  className="px-8 py-3 bg-terracotta text-white rounded-xl font-medium
-                    hover:bg-terracotta-dark transition-colors flex items-center gap-2">
-                  {scores ? 'Explore Your Dashboard' : 'Go to Dashboard'}
+                <button onClick={onComplete} style={primaryBtn()}>
+                  {scores ? 'Open your dashboard' : 'Go to dashboard'}
                   <ArrowRight size={16} />
                 </button>
-                <p className="text-xs text-warm-gray">
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', opacity: 0.8 }}>
                   {scores
-                    ? 'Your score is ready. Jurni keeps learning in the background.'
-                    : 'Jurni will keep ingesting data in the background. You can explore while it works.'}
+                    ? "You're ready. Jurni stays running in the background."
+                    : 'Jurni will keep reading in the background. Explore while it works.'}
                 </p>
               </motion.div>
             </div>
@@ -560,132 +671,336 @@ export default function Onboarding({ api, config, onComplete }) {
 function FadeStep({ children }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
+      exit={{ opacity: 0, y: -18 }}
       transition={{ duration: 0.4 }}
-      className="flex items-center justify-center px-6 w-full"
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0 24px', width: '100%',
+      }}
     >
       {children}
     </motion.div>
   );
 }
 
-function CounterBox({ icon: Icon, value, label, delay }) {
+function CounterBox({ icon: Icon, value, label }) {
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.8 }}
+      initial={{ opacity: 0, scale: 0.92 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ delay, type: 'spring', stiffness: 200 }}
-      className="glass-card p-3 text-center"
+      transition={{ type: 'spring', stiffness: 200, damping: 22 }}
+      style={{
+        ...card(),
+        padding: 12,
+        textAlign: 'center',
+      }}
     >
-      <Icon size={16} className="text-terracotta mx-auto mb-1" />
+      <Icon size={15} style={{ color: 'var(--accent)', margin: '0 auto 4px', display: 'block' }} />
       <motion.div
         key={value}
-        initial={{ scale: 1.3 }}
+        initial={{ scale: 1.2 }}
         animate={{ scale: 1 }}
-        className="text-xl font-bold font-display text-charcoal"
+        style={{
+          fontFamily: 'Georgia, serif',
+          fontSize: 22,
+          color: 'var(--text-primary)',
+          fontWeight: 500,
+        }}
       >
         {value}
       </motion.div>
-      <div className="text-xs text-warm-gray">{label}</div>
+      <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 2 }}>
+        {label}
+      </div>
     </motion.div>
   );
 }
 
-function ConnectorCard({ icon: Icon, title, description, enabled, status, capturedCount, lastMessage, onToggle, accentColor, children, disabled }) {
-  const colorMap = {
-    terracotta: { icon: 'text-terracotta', activeBg: 'bg-terracotta/10', border: 'border-terracotta/20' },
-    sage: { icon: 'text-sage-dark', activeBg: 'bg-sage/10', border: 'border-sage/20' },
-    amber: { icon: 'text-amber', activeBg: 'bg-amber/10', border: 'border-amber/20' },
-  };
-  const c = colorMap[accentColor] || colorMap.terracotta;
-
+function ConnectorCard({ icon: Icon, title, description, enabled, status, capturedCount, lastMessage, onToggle, children, disabled }) {
   const statusLabel = {
-    idle: '', connecting: 'Opening browser...', login_required: 'Sign in to continue',
+    idle: '', connecting: 'Opening browser…', login_required: 'Sign in to continue',
     logged_in: 'Connected — observing', observing: 'Observing', capturing: 'Capturing',
-    loaded: 'Connected', navigating: 'Loading...', connected: 'Connected',
+    loaded: 'Connected', navigating: 'Loading…', connected: 'Connected',
     disconnected: 'Disconnected', coming_soon: 'Coming soon',
   };
   const isActive = ['logged_in', 'observing', 'capturing', 'connected', 'loaded'].includes(status);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-      className={`rounded-2xl border p-5 transition-all ${
-        enabled ? `${c.activeBg} ${c.border}` : 'bg-white/40 border-cream-dark'
-      } ${disabled ? 'opacity-50' : ''}`}>
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-3 flex-1">
-          <div className={`mt-0.5 ${c.icon}`}><Icon size={22} /></div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-medium text-charcoal">{title}</h3>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      style={{
+        padding: 18,
+        borderRadius: 12,
+        background: enabled ? 'var(--accent-soft)' : 'var(--surface)',
+        border: `0.5px solid ${enabled ? 'var(--accent-soft-strong)' : 'var(--border-strong)'}`,
+        opacity: disabled ? 0.5 : 1,
+        transition: 'all 0.15s ease',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 }}>
+        <div style={{ display: 'flex', gap: 12, flex: 1, minWidth: 0 }}>
+          <Icon size={20} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 2 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <h3 style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', margin: 0 }}>{title}</h3>
               {status && statusLabel[status] && (
-                <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                  isActive ? 'bg-score-green/10 text-score-green'
-                    : status === 'coming_soon' ? 'bg-warm-gray/10 text-warm-gray'
-                    : 'bg-amber/10 text-amber'}`}>
-                  {isActive && <span className="inline-block w-1.5 h-1.5 bg-score-green rounded-full animate-pulse" />}
+                <span style={{
+                  fontSize: 10, padding: '2px 8px', borderRadius: 10,
+                  background: isActive ? 'rgba(107, 158, 107, 0.14)' : 'var(--hover-overlay)',
+                  color: isActive ? '#6B9E6B' : 'var(--text-muted)',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  letterSpacing: 0.3,
+                }}>
+                  {isActive && (
+                    <span style={{
+                      width: 5, height: 5, borderRadius: '50%', background: '#6B9E6B',
+                      animation: 'pulse 1.5s infinite',
+                    }} />
+                  )}
                   {statusLabel[status]}
                 </span>
               )}
               {capturedCount > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-terracotta/10 text-terracotta font-medium">
+                <span style={{
+                  fontSize: 10, padding: '2px 8px', borderRadius: 10,
+                  background: 'var(--accent-soft-strong)',
+                  color: 'var(--accent)',
+                  fontWeight: 500,
+                }}>
                   {capturedCount} captured
                 </span>
               )}
             </div>
-            <p className="text-sm text-warm-gray mt-1">{description}</p>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, marginBottom: 0, lineHeight: 1.5 }}>
+              {description}
+            </p>
             {lastMessage && (
-              <p className="text-xs text-charcoal-light mt-1.5 truncate italic opacity-70">
+              <p style={{
+                fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic',
+                marginTop: 4, marginBottom: 0, opacity: 0.75,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
                 Latest: "{lastMessage}"
               </p>
             )}
             {children}
           </div>
         </div>
-        <button onClick={onToggle} disabled={disabled}
-          className="ml-4 mt-1 flex-shrink-0 disabled:cursor-not-allowed">
-          {enabled ? <ToggleRight size={28} className="text-terracotta" />
-            : <ToggleLeft size={28} className="text-warm-gray/40" />}
+        <button
+          onClick={onToggle}
+          disabled={disabled}
+          style={{
+            background: 'transparent', border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
+            padding: 0, flexShrink: 0, marginTop: 2,
+          }}
+          aria-label={enabled ? `Disable ${title}` : `Enable ${title}`}
+        >
+          {enabled
+            ? <ToggleRight size={28} style={{ color: 'var(--accent)' }} />
+            : <ToggleLeft size={28} style={{ color: 'var(--text-muted)', opacity: 0.6 }} />}
         </button>
       </div>
     </motion.div>
   );
 }
 
-function ImportSection({ onImport, progress, error, hint }) {
+function InlineImportToggle({ open, onToggle, onImport, progress, error, hint }) {
   return (
-    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-3">
-      <button onClick={onImport}
-        className="w-full px-3 py-3 bg-white/50 border border-dashed border-terracotta/20
-          rounded-xl text-xs text-charcoal-light hover:bg-white/70 transition-colors
-          flex items-center justify-center gap-2">
-        <Upload size={14} /> Select JSON export file
+    <>
+      <button
+        onClick={onToggle}
+        style={{
+          fontSize: 11, color: 'var(--text-muted)', background: 'transparent', border: 'none',
+          padding: 0, marginTop: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+          fontFamily: 'inherit',
+        }}
+      >
+        <FileJson size={11} />
+        {open ? 'Hide' : 'Or import historical data (JSON export)'}
       </button>
-      <p className="text-xs text-warm-gray/60 mt-1 text-center">{hint}</p>
-      {error && (
-        <div className="mt-2 p-2 bg-score-red/10 text-score-red text-xs rounded-lg flex items-start gap-1">
-          <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />{error}
-        </div>
-      )}
-      {progress && (
-        <div className="mt-2 p-2 bg-white/40 rounded-lg">
-          <p className="text-xs text-charcoal">{progress.message}</p>
-          {progress.total > 0 && progress.processed > 0 && (
-            <div className="mt-1 bg-cream-dark rounded-full h-1.5 overflow-hidden">
-              <div className="h-full bg-terracotta rounded-full transition-all duration-300"
-                style={{ width: `${(progress.processed / progress.total) * 100}%` }} />
+      {open && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          style={{ marginTop: 10 }}
+        >
+          <button
+            onClick={onImport}
+            style={{
+              width: '100%', padding: '12px 14px',
+              background: 'var(--surface-alt)',
+              border: '1px dashed var(--accent-soft-strong)',
+              borderRadius: 10,
+              fontSize: 12, color: 'var(--text-primary)',
+              cursor: 'pointer', fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Upload size={13} /> Select JSON export file
+          </button>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', opacity: 0.75, marginTop: 4, textAlign: 'center' }}>
+            {hint}
+          </p>
+          {error && (
+            <div style={{ ...errorBox(), marginTop: 8 }}>
+              <AlertCircle size={12} style={{ flexShrink: 0, marginTop: 1 }} />{error}
             </div>
           )}
-        </div>
+          {progress && (
+            <div style={{
+              marginTop: 8, padding: 10,
+              background: 'var(--hover-overlay)',
+              border: '0.5px solid var(--border-strong)',
+              borderRadius: 8,
+            }}>
+              <p style={{ fontSize: 11, color: 'var(--text-primary)', margin: 0 }}>{progress.message}</p>
+              {progress.total > 0 && progress.processed > 0 && (
+                <div style={{
+                  marginTop: 6, height: 2,
+                  background: 'var(--border-strong)',
+                  borderRadius: 2, overflow: 'hidden',
+                }}>
+                  <div style={{
+                    height: '100%', background: 'var(--accent)',
+                    width: `${(progress.processed / progress.total) * 100}%`,
+                    transition: 'width 300ms ease',
+                  }} />
+                </div>
+              )}
+            </div>
+          )}
+        </motion.div>
       )}
-    </motion.div>
+    </>
   );
 }
 
 function getRevealSummary(score) {
-  if (score >= 70) return "You're doing well. Jurni will help you stay on track.";
-  if (score >= 40) return "There are patterns worth watching. Jurni is here to help.";
-  return "Jurni sees some things that need attention. Let's work through them together.";
+  if (score >= 70) return 'Steady across the board.';
+  if (score >= 40) return 'A few things pulling on your attention.';
+  return 'A lot stacked up right now.';
+}
+
+// ---- Styles ----
+
+function primaryBtn({ full = false, disabled = false } = {}) {
+  return {
+    padding: '11px 22px',
+    background: disabled ? 'var(--accent-soft)' : 'var(--accent)',
+    color: disabled ? 'var(--accent)' : '#FFFFFF',
+    border: 'none',
+    borderRadius: 10,
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    fontFamily: 'inherit',
+    width: full ? '100%' : 'auto',
+    margin: full ? 0 : '0 auto',
+    transition: 'all 0.15s ease',
+    opacity: disabled ? 0.7 : 1,
+  };
+}
+
+function card() {
+  return {
+    padding: 22,
+    background: 'var(--surface)',
+    border: '0.5px solid var(--border-strong)',
+    borderRadius: 14,
+  };
+}
+
+function iconBadge() {
+  return {
+    width: 44, height: 44, borderRadius: '50%',
+    background: 'var(--accent-soft)',
+    border: '0.5px solid var(--accent-soft-strong)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    margin: '0 auto 14px',
+  };
+}
+
+function sectionHeading() {
+  return {
+    fontFamily: 'Georgia, serif',
+    fontSize: 24,
+    color: 'var(--text-primary)',
+    letterSpacing: -0.3,
+    marginBottom: 8,
+    margin: 0,
+    marginTop: 0,
+  };
+}
+
+function sectionSubheading() {
+  return {
+    fontSize: 13,
+    color: 'var(--text-muted)',
+    lineHeight: 1.6,
+    marginTop: 8,
+    maxWidth: 380,
+    marginLeft: 'auto',
+    marginRight: 'auto',
+  };
+}
+
+function label() {
+  return {
+    fontSize: 11,
+    fontWeight: 500,
+    color: 'var(--text-primary)',
+    display: 'block',
+    marginBottom: 6,
+    letterSpacing: 0.3,
+  };
+}
+
+function input() {
+  return {
+    width: '100%',
+    padding: '10px 12px',
+    fontSize: 13,
+    background: 'var(--surface-alt)',
+    border: '0.5px solid var(--border-strong)',
+    borderRadius: 8,
+    color: 'var(--text-primary)',
+    outline: 'none',
+    fontFamily: 'inherit',
+    transition: 'border-color 0.15s ease',
+  };
+}
+
+function errorBox() {
+  return {
+    display: 'flex', alignItems: 'flex-start', gap: 6,
+    fontSize: 11,
+    color: '#C44444',
+    background: 'rgba(196, 68, 68, 0.08)',
+    border: '0.5px solid rgba(196, 68, 68, 0.25)',
+    borderRadius: 8,
+    padding: '8px 10px',
+    marginBottom: 12,
+    lineHeight: 1.45,
+  };
+}
+
+function successBox() {
+  return {
+    display: 'flex', alignItems: 'flex-start', gap: 6,
+    fontSize: 11,
+    color: '#5E8C5E',
+    background: 'rgba(107, 158, 107, 0.10)',
+    border: '0.5px solid rgba(107, 158, 107, 0.25)',
+    borderRadius: 8,
+    padding: '8px 10px',
+    marginBottom: 12,
+    lineHeight: 1.45,
+  };
 }

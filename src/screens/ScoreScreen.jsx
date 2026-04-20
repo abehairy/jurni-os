@@ -98,8 +98,8 @@ export default function ScoreScreen({ api }) {
           <div className="glass-card p-5 text-center">
             <Loader2 size={16} className="text-terracotta animate-spin mx-auto mb-2" />
             <p className="text-sm text-warm-gray">
-              Jurni is analyzing your data in the background.
-              Your score will appear here once enough patterns emerge.
+              Jurni is reading your data in the background.
+              Your score shows up here as soon as there's enough to read.
             </p>
             <p className="text-xs text-warm-gray/50 mt-2">
               {stats?.messageCount > 0
@@ -146,7 +146,7 @@ export default function ScoreScreen({ api }) {
 
       {topInsights && topInsights.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.5 }}>
-          <h3 className="font-display text-lg mb-3">Insights</h3>
+          <h3 className="font-display text-lg mb-3">What's pulling on you</h3>
           <div className="space-y-3">
             {topInsights.map((insight, i) => (
               <div key={i} className={`insight-card ${insight.severity}`}>
@@ -185,12 +185,12 @@ function WaitingScoreRing({ stats }) {
             <Activity size={28} className="text-terracotta/50" />
           </motion.div>
           <span className="text-xs text-warm-gray uppercase tracking-widest mt-2">
-            Analyzing
+            Reading
           </span>
         </div>
       </div>
       <p className="text-center text-warm-gray mt-4 max-w-xs font-light text-sm">
-        Your Life Recovery Score is being calculated...
+        Your score is coming together…
       </p>
     </div>
   );

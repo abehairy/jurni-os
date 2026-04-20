@@ -489,6 +489,80 @@ async function generateBriefing({ tile, stories, people, apiKey, model, identity
   return result;
 }
 
+// ---------- Tile chat ----------
+// Conversational Q&A scoped to a single tile. Unlike briefings this is open
+// text: the user asks a question about their own data, the LLM answers using
+// the tile's stories + people + briefing as context.
+//
+// We pass the conversation history so follow-up questions work. Context
+// (stories/people/briefing) is injected as a system message — not repeated
+// with every turn, keeping tokens in check even across long chats.
+async function chatWithTile({ tile, stories = [], people = [], briefing, messages = [], apiKey, model, identity }) {
+  const system = buildTileChatSystemPrompt(tile, stories, people, briefing, identity);
+  const chatMessages = [
+    { role: 'system', content: system },
+    ...messages.slice(-20), // keep last 20 turns so prompts stay bounded
+  ];
+  const text = await callOpenRouterText({
+    messages: chatMessages,
+    apiKey,
+    model: model || DEFAULT_LANDSCAPE_MODEL,
+    temperature: 0.4,
+    maxTokens: 700,
+  });
+  return (text || '').trim();
+}
+
+function buildTileChatSystemPrompt(tile, stories, people, briefing, identity) {
+  const who = identity?.name || 'the user';
+  const storyLines = stories.slice(0, 12).map((s, i) => {
+    const date = (s.date || '').slice(0, 10);
+    return `${i + 1}. [${date}${s.tone ? ' · ' + s.tone : ''}] ${s.summary || s.label || ''}`;
+  }).join('\n');
+  const peopleLines = (people || []).slice(0, 10).map(p => `- ${p.name}${p.count ? ` (${p.count})` : ''}`).join('\n');
+  const briefingText = briefing?.briefing ? `\nBriefing: ${briefing.briefing}` : '';
+
+  return [
+    `You are Jurni, a calm, thoughtful companion helping ${who} understand a slice of their life.`,
+    `The user is asking about the tile "${tile.label}" (category: ${tile.category || 'other'}${tile.tone ? ', tone: ' + tile.tone : ''}).`,
+    ``,
+    `Use ONLY the context below to answer. If a question can't be answered from this data, say so honestly.`,
+    `Be concrete and specific — cite concrete moments, dates, and names from the stories when helpful.`,
+    `Keep answers to 2–4 short paragraphs max. No bullet spam unless explicitly asked.`,
+    `Avoid therapy-speak. Don't moralize. Reflect what's there.`,
+    briefingText,
+    ``,
+    `## Recent stories in this tile (most recent first):`,
+    storyLines || '(none)',
+    peopleLines ? `\n## People co-mentioned:\n${peopleLines}` : '',
+  ].filter(Boolean).join('\n');
+}
+
+// Plain-text OpenRouter call (no JSON mode). Used for tile chat.
+async function callOpenRouterText({ messages, apiKey, model, temperature = 0.4, maxTokens = 700 }) {
+  const response = await fetch(OPENROUTER_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://jurni.app',
+      'X-Title': 'Jurni',
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+    }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter API error (${response.status}): ${errorText}`);
+  }
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
 // ---------- Shared OpenRouter call ----------
 
 async function callOpenRouter({ prompt, apiKey, model, temperature = 0.3, maxTokens = 2000 }) {
@@ -530,10 +604,49 @@ async function callOpenRouter({ prompt, apiKey, model, temperature = 0.3, maxTok
   }
 }
 
+/**
+ * Validate an OpenRouter API key by calling the dedicated /auth/key endpoint.
+ * Returns { ok: true, data } on success, { ok: false, reason, status } on failure.
+ *
+ * Called from the Onboarding screen before the user moves past the API key
+ * step so typos / revoked keys / no-credits keys surface immediately instead
+ * of silently breaking the landscape later.
+ */
+async function validateOpenRouterKey(apiKey) {
+  if (!apiKey || !apiKey.trim()) {
+    return { ok: false, reason: 'Key is empty' };
+  }
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/auth/key', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey.trim()}`,
+        'HTTP-Referer': 'https://jurni.app',
+        'X-Title': 'Jurni',
+      },
+    });
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, reason: 'Key is invalid or revoked', status: res.status };
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      return { ok: false, reason: `OpenRouter returned ${res.status}`, status: res.status, detail: text.slice(0, 200) };
+    }
+    const json = await res.json().catch(() => null);
+    // /auth/key returns { data: { label, usage, limit, is_free_tier, rate_limit, ... } }
+    const data = json?.data || null;
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, reason: e.message || 'Network error reaching OpenRouter' };
+  }
+}
+
 module.exports = {
   processBatch,
   categorizeThread,
   generateBriefing,
+  chatWithTile,
+  validateOpenRouterKey,
   CATEGORIES,
   DEFAULT_ANALYSIS_MODEL,
   DEFAULT_LANDSCAPE_MODEL,

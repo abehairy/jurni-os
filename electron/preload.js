@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('jurni', {
   // Config
   getConfig: () => ipcRenderer.invoke('get-config'),
   setConfig: (key, value) => ipcRenderer.invoke('set-config', key, value),
+  validateOpenRouterKey: (apiKey) => ipcRenderer.invoke('validate-openrouter-key', apiKey),
 
   // Data
   getScores: () => ipcRenderer.invoke('get-scores'),
@@ -18,6 +19,7 @@ contextBridge.exposeInMainWorld('jurni', {
   getLandscape: (opts) => ipcRenderer.invoke('get-landscape', opts),
   getTileDetail: (opts) => ipcRenderer.invoke('get-tile-detail', opts),
   getTileBriefing: (opts) => ipcRenderer.invoke('get-tile-briefing', opts),
+  chatWithTile: (opts) => ipcRenderer.invoke('chat-with-tile', opts),
   recategorizeMoments: () => ipcRenderer.invoke('recategorize-moments'),
   rereadAllThreads: () => ipcRenderer.invoke('reread-all-threads'),
   getAvailableModels: () => ipcRenderer.invoke('get-available-models'),
@@ -30,6 +32,11 @@ contextBridge.exposeInMainWorld('jurni', {
   getConnectorStatus: (provider) => ipcRenderer.invoke('get-connector-status', provider),
   syncProvider: (provider) => ipcRenderer.invoke('sync-provider', provider),
   selectPhotosFolder: () => ipcRenderer.invoke('select-photos-folder'),
+
+  // Pins
+  getPins: () => ipcRenderer.invoke('get-pins'),
+  addPin: (payload) => ipcRenderer.invoke('add-pin', payload),
+  removePin: (payload) => ipcRenderer.invoke('remove-pin', payload),
 
   // Import (secondary — historical data)
   importConversations: (filePath) => ipcRenderer.invoke('import-conversations', filePath),
@@ -86,5 +93,10 @@ contextBridge.exposeInMainWorld('jurni', {
     const handler = (_, p) => callback(p);
     ipcRenderer.on('sync-progress', handler);
     return () => ipcRenderer.removeListener('sync-progress', handler);
+  },
+  onPinsChanged: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('pins-changed', handler);
+    return () => ipcRenderer.removeListener('pins-changed', handler);
   },
 });

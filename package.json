@@ -40,7 +40,8 @@
     "productName": "Jurni",
     "mac": {
       "target": "dmg",
-      "category": "public.app-category.lifestyle"
+      "category": "public.app-category.lifestyle",
+      "icon": "electron/assets/icon.icns"
     },
     "files": [
       "dist/**/*",

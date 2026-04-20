@@ -43,7 +43,7 @@ export default function ScoreRing({ score, summary }) {
           <circle
             cx="110" cy="110" r={RADIUS}
             fill="none"
-            stroke="#E8E0D6"
+            stroke="var(--border-strong)"
             strokeWidth={STROKE_WIDTH}
           />
           {/* Score ring */}
@@ -63,12 +63,20 @@ export default function ScoreRing({ score, summary }) {
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <motion.span
             key={animatedScore}
-            className="font-display text-6xl font-bold"
-            style={{ color: stroke }}
+            style={{
+              color: stroke,
+              fontFamily: 'Georgia, serif',
+              fontSize: 64,
+              fontWeight: 500,
+              lineHeight: 1,
+            }}
           >
             {animatedScore}
           </motion.span>
-          <span className="text-xs text-warm-gray uppercase tracking-widest mt-1">
+          <span style={{
+            fontSize: 11, color: 'var(--text-muted)',
+            textTransform: 'uppercase', letterSpacing: 2, marginTop: 6,
+          }}>
             Life Recovery
           </span>
         </div>
@@ -78,7 +86,10 @@ export default function ScoreRing({ score, summary }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.2 }}
-          className="text-center text-warm-gray mt-4 max-w-xs font-light"
+          style={{
+            textAlign: 'center', color: 'var(--text-muted)',
+            marginTop: 16, maxWidth: 280, fontWeight: 300, fontSize: 13, lineHeight: 1.55,
+          }}
         >
           {summary}
         </motion.p>
