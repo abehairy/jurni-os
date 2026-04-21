@@ -13,6 +13,7 @@ function createMockApi() {
     getConfig: async () => ({}),
     setConfig: async () => true,
     validateOpenRouterKey: async () => ({ ok: true }),
+    getSystemUserName: async () => ({ name: '', source: null }),
     getDashboardData: async () => ({ scores: null, stats: { momentCount: 0 }, patterns: [], topInsights: [] }),
     getScores: async () => null,
     getMoments: async () => [],

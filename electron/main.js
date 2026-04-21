@@ -112,7 +112,11 @@ function createWindow() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromNamedImage('NSStatusAvailable', [-1, 0, 1]);
+  // Template image: black-on-transparent so macOS tints it correctly for
+  // light/dark menu bars. The @2x variant is auto-picked on retina.
+  const trayIconPath = path.join(__dirname, 'assets', 'trayTemplate.png');
+  const icon = nativeImage.createFromPath(trayIconPath);
+  icon.setTemplateImage(true);
   tray = new Tray(icon);
   tray.setToolTip('Jurni');
   const contextMenu = Menu.buildFromTemplate([
@@ -810,6 +814,36 @@ app.whenReady().then(() => {
 
   // User identity — who's the narrator of these conversations
   ipcMain.handle('get-user-identity', () => db.getUserIdentity());
+
+  // Best-effort OS-level "real name" lookup. Used to pre-fill the identity
+  // step so the user doesn't have to retype what the OS already knows.
+  // On macOS `id -F` returns the Full Name from DirectoryService. Anywhere
+  // else (or if that fails) we fall back to the short username, capitalized.
+  ipcMain.handle('get-system-user-name', () => {
+    try {
+      const os = require('os');
+      const info = os.userInfo();
+      const shortName = info.username || '';
+
+      if (process.platform === 'darwin') {
+        try {
+          const { execSync } = require('child_process');
+          const fullName = execSync('id -F', { timeout: 800 }).toString().trim();
+          if (fullName && fullName !== shortName) {
+            return { name: fullName, source: 'fullname' };
+          }
+        } catch (_) { /* fall through to username */ }
+      }
+
+      if (shortName) {
+        const capitalized = shortName.charAt(0).toUpperCase() + shortName.slice(1);
+        return { name: capitalized, source: 'username' };
+      }
+      return { name: '', source: null };
+    } catch (e) {
+      return { name: '', source: null };
+    }
+  });
 
   ipcMain.handle('set-user-identity', async (_, { name, aliases }) => {
     db.setConfig('user_name', (name || '').trim());

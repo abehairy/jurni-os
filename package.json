@@ -1,9 +1,10 @@
 {
   "name": "jurni",
   "version": "0.1.0",
-  "description": "Your life has patterns you can't see. Jurni sees them.",
+  "description": "A dashboard for your life.",
   "main": "electron/main.js",
   "scripts": {
+    "postinstall": "electron-builder install-app-deps",
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "start": "vite build && electron .",
     "build": "vite build && electron-builder",

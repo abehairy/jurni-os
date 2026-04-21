@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('jurni', {
   getAvailableModels: () => ipcRenderer.invoke('get-available-models'),
   getUserIdentity: () => ipcRenderer.invoke('get-user-identity'),
   setUserIdentity: (identity) => ipcRenderer.invoke('set-user-identity', identity),
+  getSystemUserName: () => ipcRenderer.invoke('get-system-user-name'),
 
   // Connectors
   openConnector: (provider) => ipcRenderer.invoke('open-connector', provider),
