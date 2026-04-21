@@ -14,6 +14,10 @@ let capturedHashes = new Set();
 let capturedCount = 0;
 let crawlRunning = false;
 let crawlComplete = false;
+// When the social flow is about to full-navigate to the user's profile page
+// (to capture self-posts on the next preload run), we suppress the usual
+// crawl_complete broadcast so the main process doesn't think we're done.
+let navigatingAway = false;
 
 // Sniffed API info from the site's own requests
 let sniffedHeaders = {};
@@ -23,12 +27,16 @@ function detectProvider() {
   const host = window.location.hostname;
   if (host.includes('claude')) return 'claude';
   if (host.includes('chatgpt') || host.includes('openai')) return 'chatgpt';
+  if (host === 'x.com' || host.endsWith('.x.com') || host.includes('twitter.com')) return 'x';
+  if (host.includes('linkedin.com')) return 'linkedin';
+  if (host.includes('instagram.com')) return 'instagram';
+  if (host.includes('facebook.com')) return 'facebook';
   return null;
 }
 
 // ---- Message capture ----
 
-function captureMessage(text, timestamp, conversationTitle, source, role) {
+function captureMessage(text, timestamp, conversationTitle, source, role, opts) {
   if (!text || text.trim().length < 5) return false;
   const clean = text.trim();
   const hash = simpleHash(clean);
@@ -43,6 +51,11 @@ function captureMessage(text, timestamp, conversationTitle, source, role) {
     url: window.location.href,
     source,
     role: role || 'user',
+    // Optional enrichment for social posts. Defaults preserve today's
+    // behavior: claude/chatgpt turns stay author='self'.
+    author: opts?.author || 'self',
+    authorHandle: opts?.authorHandle || null,
+    authorName: opts?.authorName || null,
   });
   updateStatusBar();
   return true;
@@ -149,8 +162,12 @@ function extractTextFromPayload(obj) {
 async function startCrawl() {
   if (crawlRunning || crawlComplete) return;
   crawlRunning = true;
-  sendStatus('crawling', 'Preparing to fetch your conversation history...');
-  setStatusText('is preparing to fetch conversations...');
+  const isSocial = ['x', 'linkedin', 'instagram', 'facebook'].includes(provider);
+  sendStatus(
+    'crawling',
+    isSocial ? 'Preparing to read your feed...' : 'Preparing to fetch your conversation history...'
+  );
+  setStatusText(isSocial ? 'is preparing to read your feed...' : 'is preparing to fetch conversations...');
 
   await sleep(2000);
 
@@ -172,9 +189,11 @@ async function startCrawl() {
       clog('Starting ChatGPT API crawl');
       success = await crawlChatGPTAPI();
       clog(`ChatGPT API crawl result: success=${success}, captured=${capturedCount}`);
+    } else if (['x', 'linkedin', 'instagram', 'facebook'].includes(provider)) {
+      success = await runSocialCrawl(provider);
     }
 
-    if (!success || capturedCount === 0) {
+    if ((!success || capturedCount === 0) && (provider === 'claude' || provider === 'chatgpt')) {
       clog('API crawl got nothing, falling back to sidebar navigation');
       sendStatus('crawling', 'Trying sidebar navigation...');
       setStatusText('is reading conversations from the sidebar...');
@@ -188,8 +207,14 @@ async function startCrawl() {
 
   crawlRunning = false;
   crawlComplete = true;
-  sendStatus('crawl_complete', `Done! Captured ${capturedCount} messages from your history.`);
-  setStatusText(`done — ${capturedCount} messages captured. Watching for new ones.`);
+  if (navigatingAway) {
+    clog('Suppressing crawl_complete: navigating to profile page for self-post capture');
+    return;
+  }
+  const noun = isSocial ? 'posts' : 'messages';
+  const source = isSocial ? 'your feed' : 'your history';
+  sendStatus('crawl_complete', `Done! Captured ${capturedCount} ${noun} from ${source}.`);
+  setStatusText(`done — ${capturedCount} ${noun} captured. Watching for new ones.`);
 }
 
 // ---- Claude API Crawl ----
@@ -520,6 +545,294 @@ async function crawlChatGPTAPI() {
   return capturedCount > 0;
 }
 
+// Feed selectors per provider. Virtualized feeds reuse a handful of
+// `<article>` nodes — we rely on dedupe (captureMessage's hash) to avoid
+// double-counting as we scroll.
+const SOCIAL_FEED_CONFIG = {
+  x: {
+    title: 'X Posts',
+    articleSelector: 'article',
+    extract: (el) => {
+      const textNodes = el.querySelectorAll('[data-testid="tweetText"]');
+      const text = Array.from(textNodes).map((n) => n.textContent || '').join('\n').trim();
+      const timeEl = el.querySelector('time');
+      return { text, timestamp: timeEl?.getAttribute('datetime') || null };
+    },
+    extractAuthor: (el) => {
+      // User-Name block holds both display name and the @handle.
+      const nameEl = el.querySelector('[data-testid="User-Name"]');
+      const name = nameEl?.querySelector('span')?.textContent?.trim() || null;
+      const handleLink = el.querySelector('a[href^="/"][role="link"] span');
+      let handle = null;
+      const links = el.querySelectorAll('a[role="link"][href^="/"]');
+      for (const a of links) {
+        const h = a.getAttribute('href');
+        if (h && /^\/[A-Za-z0-9_]{1,15}$/.test(h)) { handle = h.slice(1); break; }
+      }
+      return { handle, name };
+    },
+    // Pull the signed-in user's own handle from the left-nav profile tab.
+    detectHandle: () => {
+      const a = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]');
+      const href = a?.getAttribute('href');
+      if (!href) return null;
+      const m = href.match(/^\/([A-Za-z0-9_]{1,15})/);
+      return m ? m[1] : null;
+    },
+    isSelfProfilePage: (handle) =>
+      !!handle && new RegExp(`^/${handle}(/with_replies)?/?$`, 'i').test(location.pathname),
+    profileUrl: (handle) => `https://x.com/${handle}/with_replies`,
+  },
+  linkedin: {
+    title: 'LinkedIn Posts',
+    // LinkedIn changes class names often. Match every known variant; dedupe
+    // runs at capture time so overlap is cheap.
+    articleSelector: [
+      '[data-id^="urn:li:activity:"]',
+      '[data-urn^="urn:li:activity:"]',
+      '[data-urn*="urn:li:activity"]',
+      'div.feed-shared-update-v2',
+      '.scaffold-finite-scroll__content > div',
+      'main [role="region"] [data-view-name]',
+    ].join(', '),
+    extract: (el) => ({ text: extractSocialText(el), timestamp: null }),
+    extractAuthor: (el) => {
+      const nameEl = el.querySelector('.update-components-actor__name, .update-components-actor__title');
+      const name = nameEl?.textContent?.trim().split('\n')[0] || null;
+      const linkEl = el.querySelector('a.update-components-actor__meta-link, a.app-aware-link[href*="/in/"]');
+      const href = linkEl?.getAttribute('href') || '';
+      const m = href.match(/\/in\/([^\/?#]+)/);
+      return { handle: m ? m[1] : null, name };
+    },
+    // On LinkedIn, /in/me/ redirects to the user's real /in/<slug>/ URL.
+    // Detect from any profile link already on the page as a fallback.
+    detectHandle: () => {
+      const candidates = document.querySelectorAll('a[href*="/in/"]');
+      for (const a of candidates) {
+        const m = a.getAttribute('href').match(/\/in\/([^\/?#]+)/);
+        if (m && m[1] !== 'me') return m[1];
+      }
+      return null;
+    },
+    isSelfProfilePage: (handle) =>
+      !!handle && new RegExp(`^/in/${handle}(/recent-activity|/)?`, 'i').test(location.pathname),
+    profileUrl: (handle) => `https://www.linkedin.com/in/${handle}/recent-activity/all/`,
+  },
+  instagram: {
+    title: 'Instagram Posts',
+    articleSelector: 'article, [role="article"]',
+    extract: (el) => ({ text: extractSocialText(el), timestamp: null }),
+  },
+  facebook: {
+    title: 'Facebook Posts',
+    articleSelector: '[role="article"], [data-pagelet^="FeedUnit"]',
+    extract: (el) => ({ text: extractSocialText(el), timestamp: null }),
+  },
+};
+
+async function crawlSocialFeed(activeProvider) {
+  const cfg = SOCIAL_FEED_CONFIG[activeProvider];
+  if (!cfg) return false;
+
+  sendStatus('crawling', 'Looking for posts in your feed...');
+  setStatusText('is looking for posts...');
+
+  // 1. Wait up to 30s for the feed to render its first posts. LinkedIn and
+  //    Facebook are especially slow. If nothing shows up after ~8s, nudge the
+  //    page by scrolling — some feeds defer rendering until interaction.
+  const nudge = setInterval(() => window.scrollBy({ top: 300, behavior: 'instant' }), 4000);
+  const appeared = await waitFor(
+    () => document.querySelectorAll(cfg.articleSelector).length > 0,
+    30000,
+    500,
+  );
+  clearInterval(nudge);
+  if (!appeared) {
+    clog(`${activeProvider}: no posts rendered within 30s`);
+    setStatusText('could not find posts on this page.');
+    return false;
+  }
+
+  // 2. Scroll-and-collect. Stop when no new posts show up after 3 consecutive
+  //    scrolls, or when we hit a hard cap.
+  const MAX_POSTS = 150;
+  const MAX_IDLE_SCROLLS = 3;
+  let idleScrolls = 0;
+  const nowIso = new Date().toISOString();
+  const startedAt = capturedCount;
+
+  while (capturedCount - startedAt < MAX_POSTS && idleScrolls < MAX_IDLE_SCROLLS) {
+    const beforeScroll = capturedCount;
+    for (const el of document.querySelectorAll(cfg.articleSelector)) {
+      const { text, timestamp } = cfg.extract(el);
+      if (!text) continue;
+      const a = cfg.extractAuthor ? cfg.extractAuthor(el) : { handle: null, name: null };
+      captureMessage(text, timestamp || nowIso, cfg.title, 'social-feed', 'human', {
+        author: 'other',
+        authorHandle: a.handle,
+        authorName: a.name,
+      });
+    }
+
+    sendStatus('crawling', `Captured ${capturedCount - startedAt} posts so far...`, {
+      captured: capturedCount - startedAt,
+    });
+    setStatusText(`captured ${capturedCount - startedAt} posts...`);
+
+    if (capturedCount === beforeScroll) idleScrolls++;
+    else idleScrolls = 0;
+
+    window.scrollBy({ top: window.innerHeight * 0.9, behavior: 'instant' });
+    await sleep(1500);
+  }
+
+  const captured = capturedCount - startedAt;
+  sendStatus('crawling', `Captured ${captured} posts from your feed`, { captured });
+  return captured > 0;
+}
+
+// Scrape the signed-in user's own post page. Same mechanics as the feed
+// crawl, but every capture is tagged author='self' so the processor can
+// distinguish voice from ambient content.
+async function crawlSelfPosts(activeProvider) {
+  const cfg = SOCIAL_FEED_CONFIG[activeProvider];
+  if (!cfg) return false;
+
+  sendStatus('crawling', 'Reading your own posts...');
+  setStatusText('is reading your own posts...');
+
+  const nudge = setInterval(() => window.scrollBy({ top: 300, behavior: 'instant' }), 4000);
+  const appeared = await waitFor(
+    () => document.querySelectorAll(cfg.articleSelector).length > 0,
+    30000,
+    500,
+  );
+  clearInterval(nudge);
+  if (!appeared) {
+    clog(`${activeProvider}: no self-posts rendered within 30s`);
+    setStatusText('could not find any of your posts.');
+    return false;
+  }
+
+  const MAX_POSTS = 200;
+  const MAX_IDLE_SCROLLS = 3;
+  let idleScrolls = 0;
+  const nowIso = new Date().toISOString();
+  const startedAt = capturedCount;
+  const title = `${cfg.title.replace(' Posts', '')} — My Posts`;
+
+  while (capturedCount - startedAt < MAX_POSTS && idleScrolls < MAX_IDLE_SCROLLS) {
+    const before = capturedCount;
+    for (const el of document.querySelectorAll(cfg.articleSelector)) {
+      const { text, timestamp } = cfg.extract(el);
+      if (!text) continue;
+      captureMessage(text, timestamp || nowIso, title, 'social-self', 'user', {
+        author: 'self',
+      });
+    }
+    sendStatus('crawling', `Captured ${capturedCount - startedAt} of your posts...`, {
+      captured: capturedCount - startedAt,
+    });
+    setStatusText(`captured ${capturedCount - startedAt} of your posts...`);
+
+    if (capturedCount === before) idleScrolls++;
+    else idleScrolls = 0;
+
+    window.scrollBy({ top: window.innerHeight * 0.9, behavior: 'instant' });
+    await sleep(1500);
+  }
+
+  const captured = capturedCount - startedAt;
+  sendStatus('crawling', `Captured ${captured} of your own posts`, { captured });
+  return captured > 0;
+}
+
+// Orchestrate the right crawl for the page we're on: feed first, then chain
+// to the user's own profile for self-post capture. Handle is detected once
+// and cached in app config so we don't re-detect on every sync.
+async function runSocialCrawl(activeProvider) {
+  const cfg = SOCIAL_FEED_CONFIG[activeProvider];
+  if (!cfg) return false;
+
+  const cached = await getCachedHandle(activeProvider);
+
+  // Case 1: we arrived on the user's own profile page. Scrape self-posts.
+  if (cfg.isSelfProfilePage && cached && cfg.isSelfProfilePage(cached)) {
+    clog(`${activeProvider}: on self-profile page (handle=${cached}), crawling own posts`);
+    return await crawlSelfPosts(activeProvider);
+  }
+
+  // Case 2: we're on the feed (or anywhere that isn't the self-profile).
+  // Run the feed crawl as ambient content, then chain to /profile if we can.
+  clog(`${activeProvider}: running feed crawl`);
+  const feedOk = await crawlSocialFeed(activeProvider);
+
+  if (!cfg.detectHandle || !cfg.profileUrl) return feedOk;
+
+  let handle = cached;
+  if (!handle) {
+    handle = cfg.detectHandle();
+    if (handle) {
+      clog(`${activeProvider}: detected handle=${handle}, caching`);
+      await setCachedHandle(activeProvider, handle);
+    }
+  }
+
+  if (handle && !cfg.isSelfProfilePage(handle)) {
+    const url = cfg.profileUrl(handle);
+    clog(`${activeProvider}: navigating to self-profile ${url}`);
+    setStatusText('switching to your profile...');
+    sendStatus('crawling', 'Switching to your profile page...');
+    navigatingAway = true;
+    await sleep(1500);
+    window.location.href = url;
+    return true;
+  }
+  return feedOk;
+}
+
+async function getCachedHandle(activeProvider) {
+  try {
+    const cfg = await ipcRenderer.invoke('get-config');
+    return cfg?.[`handle_${activeProvider}`] || null;
+  } catch (_) { return null; }
+}
+
+async function setCachedHandle(activeProvider, handle) {
+  try { await ipcRenderer.invoke('set-config', `handle_${activeProvider}`, handle); } catch (_) {}
+}
+
+// Poll `cond` every `intervalMs` up to `timeoutMs`. Returns true if it ever
+// returned truthy, false if we hit the timeout.
+async function waitFor(cond, timeoutMs, intervalMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try { if (cond()) return true; } catch (_) {}
+    await sleep(intervalMs);
+  }
+  return false;
+}
+
+function extractSocialText(rootEl) {
+  const selectors = [
+    '[data-testid="tweetText"]',
+    '.update-components-text',
+    '.feed-shared-update-v2__description',
+    'h1, h2, h3, h4, p, span',
+  ];
+  for (const sel of selectors) {
+    const nodes = rootEl.querySelectorAll(sel);
+    if (!nodes.length) continue;
+    const text = Array.from(nodes)
+      .map(n => (n.textContent || '').trim())
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+    if (text.length >= 20) return text;
+  }
+  return '';
+}
+
 // ===========================================================
 //  SIDEBAR FALLBACK — Navigate the DOM if API crawl failed
 // ===========================================================
@@ -655,16 +968,21 @@ async function safeFetch(url) {
 
 function injectStatusBar() {
   if (document.getElementById('jurni-status-bar')) return;
-  const name = provider === 'claude' ? 'Claude' : 'ChatGPT';
+  const names = {
+    claude: 'Claude', chatgpt: 'ChatGPT',
+    x: 'X', linkedin: 'LinkedIn', instagram: 'Instagram', facebook: 'Facebook',
+  };
+  const name = names[provider] || provider || 'source';
   const bar = document.createElement('div');
   bar.id = 'jurni-status-bar';
   bar.innerHTML = `
     <div id="jurni-bar-inner" style="
-      position:fixed;top:0;left:0;right:0;z-index:99999;
+      position:fixed;top:0;left:0;right:0;z-index:2147483647;
       background:linear-gradient(135deg,#C4745A 0%,#D4917D 100%);
       color:white;font-family:-apple-system,BlinkMacSystemFont,'DM Sans',sans-serif;
       font-size:12px;padding:6px 16px;display:flex;align-items:center;
       justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,0.15);
+      pointer-events:auto;
     ">
       <div style="display:flex;align-items:center;gap:8px;">
         <span id="jurni-dot" style="display:inline-block;width:8px;height:8px;background:#4ade80;
@@ -684,14 +1002,24 @@ function injectStatusBar() {
       @keyframes jurni-pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
       body { padding-top: 34px !important; }
     </style>`;
-  document.body.appendChild(bar);
+  // Mount on <html> rather than <body>: React hydration often wipes the body
+  // subtree on sites like LinkedIn, which would take the bar with it.
+  document.documentElement.appendChild(bar);
   document.getElementById('jurni-minimize-bar')?.addEventListener('click', () => {
     const inner = document.getElementById('jurni-bar-inner');
     if (!inner) return;
     const hidden = inner.style.display === 'none';
     inner.style.display = hidden ? 'flex' : 'none';
-    document.body.style.paddingTop = hidden ? '34px' : '0';
+    if (document.body) document.body.style.paddingTop = hidden ? '34px' : '0';
   });
+  // If the site removes our bar (aggressive re-renders, ad blockers, CSP),
+  // re-append it. Observe <html> children so we catch body-level deletions.
+  if (!window.__jurniBarObserver) {
+    window.__jurniBarObserver = new MutationObserver(() => {
+      if (!document.getElementById('jurni-status-bar')) injectStatusBar();
+    });
+    window.__jurniBarObserver.observe(document.documentElement, { childList: true, subtree: false });
+  }
 }
 
 function updateStatusBar() {
@@ -749,9 +1077,17 @@ async function init() {
   const loggedIn = await detectLogin();
   clog(`Login check result: ${loggedIn}`);
 
+  const isSocial = ['x', 'linkedin', 'instagram', 'facebook'].includes(provider);
+  const startText = isSocial
+    ? 'is reading your feed...'
+    : 'is fetching your conversation history...';
+  const startSendMsg = isSocial
+    ? 'Reading your feed...'
+    : 'Starting conversation fetch...';
+
   if (loggedIn) {
-    setStatusText('is fetching your conversation history...');
-    sendStatus('crawling', 'Starting conversation fetch...');
+    setStatusText(startText);
+    sendStatus('crawling', startSendMsg);
     await startCrawl();
   } else {
     setStatusText('waiting for you to sign in...');
@@ -764,8 +1100,8 @@ async function init() {
         clearInterval(interval);
         // Wait for page to settle after login
         await sleep(3000);
-        setStatusText('is fetching your conversation history...');
-        sendStatus('crawling', 'Login detected! Fetching...');
+        setStatusText(startText);
+        sendStatus('crawling', isSocial ? 'Login detected! Reading feed...' : 'Login detected! Fetching...');
         await startCrawl();
       }
     }, 5000);
@@ -780,10 +1116,15 @@ async function detectLogin() {
     if (hasOrgId) return true;
     // Fallback: check if there's a chat input on the page
     return !!document.querySelector('[contenteditable="true"], textarea, [class*="input"]');
-  } else {
+  } else if (provider === 'chatgpt') {
     const resp = await safeFetch('/backend-api/conversations?limit=1');
     return !!resp;
   }
+  // Social providers: if we're on a feed-like page and not on obvious login paths,
+  // treat it as signed in. This keeps the flow fast while staying simple.
+  const href = window.location.href;
+  if (/login|signin|challenge|checkpoint/i.test(href)) return false;
+  return true;
 }
 
 // Start after page loads

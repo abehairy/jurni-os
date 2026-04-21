@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from './components/Sidebar';
+import UpdateBanner from './components/UpdateBanner';
 import LifeLandscape from './screens/LifeLandscape';
 import Settings from './screens/Settings';
 import Onboarding from './screens/Onboarding';
@@ -54,6 +55,9 @@ function createMockApi() {
     getLogs: async () => 'No logs (not running in Electron)',
     getLogPath: async () => '~/.jurni/crawler.log',
     onLogEntry: () => () => { },
+    checkForUpdates: async () => ({ ok: false }),
+    installUpdate: async () => ({ ok: false }),
+    onUpdateStatus: () => () => { },
   };
 }
 
@@ -132,6 +136,10 @@ export default function App() {
 
   const hasAnyConnector = config.connector_claude === 'enabled' ||
     config.connector_chatgpt === 'enabled' ||
+    config.connector_x === 'enabled' ||
+    config.connector_linkedin === 'enabled' ||
+    config.connector_instagram === 'enabled' ||
+    config.connector_facebook === 'enabled' ||
     config.connector_photos === 'enabled';
   const needsSetup = !loading && (forceOnboarding || !config.openrouter_api_key || (!hasData && !hasAnyConnector));
 
@@ -154,7 +162,12 @@ export default function App() {
   }
 
   if (needsSetup) {
-    return <Onboarding api={api} config={config} onComplete={handleSetupComplete} />;
+    return (
+      <>
+        <UpdateBanner api={api} />
+        <Onboarding api={api} config={config} onComplete={handleSetupComplete} />
+      </>
+    );
   }
 
   const screens = {
@@ -180,6 +193,7 @@ export default function App() {
 
   return (
     <div className="h-screen flex overflow-hidden">
+      <UpdateBanner api={api} />
       <Sidebar
         current={activeScreen}
         onNavigate={setCurrentScreen}

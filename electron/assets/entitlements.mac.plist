@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Required for Electron apps under hardened runtime. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+
+    <!-- App makes outbound network requests (OpenRouter, connectors). -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- App runs a BrowserWindow on behalf of the user for browser connectors
+         (visiting claude.ai, chatgpt.com, x.com, linkedin.com, etc.). -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+
+    <!-- Writes to ~/.jurni/ (user data, sqlite, logs). -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!-- Inherits entitlements into helper processes (required for Electron). -->
+    <key>com.apple.security.inherit</key>
+    <true/>
+</dict>
+</plist>

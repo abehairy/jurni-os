@@ -71,6 +71,10 @@ export default function Onboarding({ api, config, onComplete }) {
   const [connectors, setConnectors] = useState({
     claude: { enabled: false, status: 'idle', capturedCount: 0 },
     chatgpt: { enabled: false, status: 'idle', capturedCount: 0 },
+    x: { enabled: false, status: 'idle', capturedCount: 0 },
+    linkedin: { enabled: false, status: 'idle', capturedCount: 0 },
+    instagram: { enabled: false, status: 'idle', capturedCount: 0 },
+    facebook: { enabled: false, status: 'idle', capturedCount: 0 },
     photos: { enabled: false, folder: null },
     calendar: { enabled: false, status: 'idle' },
   });
@@ -114,6 +118,10 @@ export default function Onboarding({ api, config, onComplete }) {
         ...prev,
         claude: { ...prev.claude, enabled: cfg.connector_claude === 'enabled' },
         chatgpt: { ...prev.chatgpt, enabled: cfg.connector_chatgpt === 'enabled' },
+        x: { ...prev.x, enabled: cfg.connector_x === 'enabled' },
+        linkedin: { ...prev.linkedin, enabled: cfg.connector_linkedin === 'enabled' },
+        instagram: { ...prev.instagram, enabled: cfg.connector_instagram === 'enabled' },
+        facebook: { ...prev.facebook, enabled: cfg.connector_facebook === 'enabled' },
         photos: { ...prev.photos, enabled: cfg.connector_photos === 'enabled', folder: cfg.photos_folder },
       }));
     }
@@ -207,7 +215,8 @@ export default function Onboarding({ api, config, onComplete }) {
   };
 
   const handleToggleConnector = async (provider) => {
-    if (provider === 'claude' || provider === 'chatgpt') {
+    const browserProviders = ['claude', 'chatgpt', 'x', 'linkedin', 'instagram', 'facebook'];
+    if (browserProviders.includes(provider)) {
       if (connectors[provider].enabled) {
         await api.closeConnector(provider);
         setConnectors(prev => ({
@@ -254,8 +263,15 @@ export default function Onboarding({ api, config, onComplete }) {
     cleanup();
   };
 
-  const hasAnyConnector = connectors.claude.enabled || connectors.chatgpt.enabled ||
-    connectors.photos.enabled || importProgress?.stage === 'complete';
+  const hasAnyConnector =
+    connectors.claude.enabled ||
+    connectors.chatgpt.enabled ||
+    connectors.x.enabled ||
+    connectors.linkedin.enabled ||
+    connectors.instagram.enabled ||
+    connectors.facebook.enabled ||
+    connectors.photos.enabled ||
+    importProgress?.stage === 'complete';
 
   return (
     <div style={shellStyle()}>
@@ -271,9 +287,9 @@ export default function Onboarding({ api, config, onComplete }) {
       )}
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <AnimatePresence mode="wait">
+      <AnimatePresence mode="wait">
 
-          {step === 'welcome' && (
+        {step === 'welcome' && (
             <StepFrame key="welcome">
               <SplitLayout
                 left={
@@ -420,8 +436,8 @@ function ProgressBar({ activeStep }) {
 function StepFrame({ children }) {
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.35 }}
       style={{ width: '100%', height: '100%', display: 'flex' }}
@@ -536,7 +552,7 @@ function WelcomeContent({ onNext }) {
         <Pillar icon={Eye} title="See where you stand" text="One clear view. No more scrolling to find the thread." />
         <Pillar icon={Lock} title="Private by default" text="Everything stays on your Mac. No Jurni server, no accounts." />
         <Pillar icon={Sparkles} title="Bring your own AI" text="You control the model and the cost. Typical spend: $2–5/mo." />
-      </div>
+            </div>
 
       <button onClick={onNext} style={primaryBtn()}>
         Get started <ArrowRight size={16} />
@@ -559,7 +575,7 @@ function Pillar({ icon: Icon, title, text }) {
         flexShrink: 0, marginTop: 2,
       }}>
         <Icon size={13} style={{ color: 'var(--accent)' }} />
-      </div>
+              </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>
           {title}
@@ -582,12 +598,12 @@ function ApiKeyContent({ apiKey, setApiKey, keyChecking, keyError, keyInfo, onSa
       </p>
 
       <label style={label()}>OpenRouter API Key</label>
-      <input
-        type="password"
-        value={apiKey}
-        onChange={e => setApiKey(e.target.value)}
-        placeholder="sk-or-v1-..."
-        autoFocus
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={e => setApiKey(e.target.value)}
+                  placeholder="sk-or-v1-..."
+                  autoFocus
         disabled={keyChecking}
         onKeyDown={e => e.key === 'Enter' && onSave()}
         style={input()}
@@ -608,7 +624,7 @@ function ApiKeyContent({ apiKey, setApiKey, keyChecking, keyError, keyInfo, onSa
         <div style={errorBox()}>
           <AlertCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
           <span>{keyError}</span>
-        </div>
+              </div>
       )}
       {keyInfo && !keyError && (
         <div style={successBox()}>
@@ -619,7 +635,7 @@ function ApiKeyContent({ apiKey, setApiKey, keyChecking, keyError, keyInfo, onSa
               ? ` · $${(keyInfo.limit - keyInfo.usage).toFixed(2)} remaining`
               : ''}
           </span>
-        </div>
+            </div>
       )}
 
       <button
@@ -721,18 +737,18 @@ function ConnectorsContent({
         </h1>
         <p style={{ ...heroSubhead(), textAlign: 'center', margin: '0 auto' }}>
           The more you connect, the sharper the view. Enable at least one.
-        </p>
-      </div>
+                </p>
+              </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <ConnectorCard
+                <ConnectorCard
           icon={MessageSquare}
           title="Claude"
           description="Sign in to claude.ai. Jurni reads your conversations as they happen."
-          enabled={connectors.claude.enabled}
-          status={connectors.claude.status}
-          capturedCount={connectors.claude.capturedCount}
-          lastMessage={connectors.claude.lastMessage}
+                  enabled={connectors.claude.enabled}
+                  status={connectors.claude.status}
+                  capturedCount={connectors.claude.capturedCount}
+                  lastMessage={connectors.claude.lastMessage}
           onToggle={() => onToggle('claude')}
         >
           <InlineImportToggle
@@ -743,16 +759,16 @@ function ConnectorsContent({
             error={importError}
             hint="Claude: Settings → Export"
           />
-        </ConnectorCard>
+                </ConnectorCard>
 
-        <ConnectorCard
+                <ConnectorCard
           icon={MessageSquare}
           title="ChatGPT"
           description="Sign in to chatgpt.com. Jurni reads your conversations as they happen."
-          enabled={connectors.chatgpt.enabled}
-          status={connectors.chatgpt.status}
-          capturedCount={connectors.chatgpt.capturedCount}
-          lastMessage={connectors.chatgpt.lastMessage}
+                  enabled={connectors.chatgpt.enabled}
+                  status={connectors.chatgpt.status}
+                  capturedCount={connectors.chatgpt.capturedCount}
+                  lastMessage={connectors.chatgpt.lastMessage}
           onToggle={() => onToggle('chatgpt')}
         >
           <InlineImportToggle
@@ -763,27 +779,71 @@ function ConnectorsContent({
             error={importError}
             hint="ChatGPT: Settings → Data Controls → Export"
           />
-        </ConnectorCard>
+                </ConnectorCard>
+
+        <ConnectorCard
+          icon={MessageSquare}
+          title="X"
+          description="Sign in to x.com. Jurni reads your visible posts from your feed."
+          enabled={connectors.x.enabled}
+          status={connectors.x.status}
+          capturedCount={connectors.x.capturedCount}
+          lastMessage={connectors.x.lastMessage}
+          onToggle={() => onToggle('x')}
+        />
+
+        <ConnectorCard
+          icon={MessageSquare}
+          title="LinkedIn"
+          description="Sign in to linkedin.com. Jurni reads visible posts from your feed."
+          enabled={connectors.linkedin.enabled}
+          status={connectors.linkedin.status}
+          capturedCount={connectors.linkedin.capturedCount}
+          lastMessage={connectors.linkedin.lastMessage}
+          onToggle={() => onToggle('linkedin')}
+        />
+
+        <ConnectorCard
+          icon={MessageSquare}
+          title="Instagram"
+          description="Sign in to instagram.com. Jurni reads visible posts from your feed."
+          enabled={connectors.instagram.enabled}
+          status={connectors.instagram.status}
+          capturedCount={connectors.instagram.capturedCount}
+          lastMessage={connectors.instagram.lastMessage}
+          onToggle={() => onToggle('instagram')}
+        />
+
+        <ConnectorCard
+          icon={MessageSquare}
+          title="Facebook"
+          description="Sign in to facebook.com. Jurni reads visible posts from your feed."
+          enabled={connectors.facebook.enabled}
+          status={connectors.facebook.status}
+          capturedCount={connectors.facebook.capturedCount}
+          lastMessage={connectors.facebook.lastMessage}
+          onToggle={() => onToggle('facebook')}
+        />
 
         <ConnectorCard
           icon={Image}
           title="Photos"
-          description={connectors.photos.folder ? `Watching: ${connectors.photos.folder}` : 'Select your Photos folder.'}
-          enabled={connectors.photos.enabled}
-          status={connectors.photos.enabled ? 'connected' : 'idle'}
+                  description={connectors.photos.folder ? `Watching: ${connectors.photos.folder}` : 'Select your Photos folder.'}
+                  enabled={connectors.photos.enabled}
+                  status={connectors.photos.enabled ? 'connected' : 'idle'}
           onToggle={() => onToggle('photos')}
         />
 
         <ConnectorCard
           icon={CalendarDays}
           title="Google Calendar"
-          description="Connect your calendar. Coming soon."
+                  description="Connect your calendar. Coming soon."
           enabled={false}
           status="coming_soon"
           onToggle={() => {}}
           disabled
         />
-      </div>
+              </div>
 
       <motion.div
         initial={{ opacity: 0 }}
@@ -796,14 +856,14 @@ function ConnectorsContent({
           disabled={!hasAny}
           style={primaryBtn({ disabled: !hasAny })}
         >
-          Continue <ArrowRight size={16} />
-        </button>
-      </motion.div>
+                  Continue <ArrowRight size={16} />
+                </button>
+              </motion.div>
       {!hasAny && (
         <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', marginTop: 10, opacity: 0.8 }}>
-          Enable a source or import data to continue
-        </p>
-      )}
+                  Enable a source or import data to continue
+                </p>
+              )}
     </motion.div>
   );
 }
@@ -818,17 +878,17 @@ function DiscoveringContent({ counters, discoveryLines, discoveryRef, scores, on
     >
       <div style={{ textAlign: 'center', marginBottom: 20 }}>
         <Eyebrow center>Step 04 · Reading</Eyebrow>
-      </div>
+            </div>
 
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
-        <motion.div
-          animate={{ rotate: 360 }}
+                <motion.div
+                  animate={{ rotate: 360 }}
           transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
           style={{ position: 'relative', width: 76, height: 76 }}
-        >
-          <motion.div
+                >
+                  <motion.div
             animate={{ scale: [1, 1.08, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
+                    transition={{ duration: 2, repeat: Infinity }}
             style={{
               position: 'absolute', inset: 0, borderRadius: '50%',
               border: '2px solid var(--accent-soft-strong)',
@@ -836,9 +896,9 @@ function DiscoveringContent({ counters, discoveryLines, discoveryRef, scores, on
           />
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Sparkles size={24} style={{ color: 'var(--accent)' }} />
-          </div>
-        </motion.div>
-      </div>
+                  </div>
+                </motion.div>
+              </div>
 
       <h1 style={{
         fontFamily: 'Georgia, serif', fontStyle: 'italic',
@@ -853,19 +913,19 @@ function DiscoveringContent({ counters, discoveryLines, discoveryRef, scores, on
         <CounterBox icon={Heart} value={counters.emotions} label="Emotions" />
         <CounterBox icon={Users} value={counters.people} label="People" />
         <CounterBox icon={Waves} value={counters.patterns} label="Signals" />
-      </div>
+              </div>
 
       <div
         ref={discoveryRef}
         style={{ ...card(), padding: 14, height: 168, overflowY: 'auto' }}
       >
-        <AnimatePresence initial={false}>
-          {discoveryLines.map((line) => (
-            <motion.div
-              key={line.id}
+                <AnimatePresence initial={false}>
+                  {discoveryLines.map((line) => (
+                    <motion.div
+                      key={line.id}
               initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4 }}
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}
             >
               <span style={{
@@ -873,45 +933,45 @@ function DiscoveringContent({ counters, discoveryLines, discoveryRef, scores, on
                 background: 'var(--accent)', opacity: 0.55, flexShrink: 0,
               }} />
               <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{line.text}</span>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-        {discoveryLines.length === 0 && (
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+                {discoveryLines.length === 0 && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
             <p style={{ color: 'var(--text-muted)', fontSize: 13, opacity: 0.7 }}>Waiting for data…</p>
-          </div>
-        )}
-      </div>
+                  </div>
+                )}
+              </div>
 
-      <AnimatePresence>
-        {scores && (
-          <motion.div
+              <AnimatePresence>
+                {scores && (
+                  <motion.div
             initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
+                    animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
             style={{ marginTop: 20, display: 'flex', justifyContent: 'center' }}
-          >
+                  >
             <ScoreRing score={scores.overall} summary={getRevealSummary(scores.overall)} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
         transition={{ delay: 2.5 }}
         style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}
       >
         <button onClick={onComplete} style={primaryBtn()}>
           {scores ? 'Open your dashboard' : 'Go to dashboard'}
-          <ArrowRight size={16} />
-        </button>
+                  <ArrowRight size={16} />
+                </button>
         <p style={{ fontSize: 11, color: 'var(--text-muted)', opacity: 0.8 }}>
-          {scores
+                  {scores
             ? "You're ready. Jurni stays running in the background."
             : 'Jurni will keep reading in the background. Explore while it works.'}
-        </p>
-      </motion.div>
+                </p>
+              </motion.div>
     </motion.div>
   );
 }
@@ -1073,7 +1133,7 @@ function TrustPanel() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {rows.map(({ icon: Icon, title, text, tint, tintSoft }, i) => (
-          <motion.div
+    <motion.div
             key={title}
             initial={{ opacity: 0, x: 12 }}
             animate={{ opacity: 1, x: 0 }}
@@ -1108,7 +1168,7 @@ function TrustPanel() {
 
       <motion.div
         initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
+      animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5, duration: 0.5 }}
         style={{
           marginTop: 18, padding: '14px 16px',
@@ -1132,7 +1192,7 @@ function TrustPanel() {
             You pay OpenRouter directly. Jurni takes nothing.
           </div>
         </div>
-      </motion.div>
+    </motion.div>
     </div>
   );
 }
@@ -1310,12 +1370,12 @@ function InlineImportToggle({ open, onToggle, onImport, progress, error, hint })
           <p style={{ fontSize: 11, color: 'var(--text-muted)', opacity: 0.75, marginTop: 4, textAlign: 'center' }}>
             {hint}
           </p>
-          {error && (
+      {error && (
             <div style={{ ...errorBox(), marginTop: 8 }}>
               <AlertCircle size={12} style={{ flexShrink: 0, marginTop: 1 }} />{error}
-            </div>
-          )}
-          {progress && (
+        </div>
+      )}
+      {progress && (
             <div style={{
               marginTop: 8, padding: 10,
               background: 'var(--hover-overlay)',
@@ -1323,7 +1383,7 @@ function InlineImportToggle({ open, onToggle, onImport, progress, error, hint })
               borderRadius: 8,
             }}>
               <p style={{ fontSize: 11, color: 'var(--text-primary)', margin: 0 }}>{progress.message}</p>
-              {progress.total > 0 && progress.processed > 0 && (
+          {progress.total > 0 && progress.processed > 0 && (
                 <div style={{
                   marginTop: 6, height: 2,
                   background: 'var(--border-strong)',
@@ -1334,11 +1394,11 @@ function InlineImportToggle({ open, onToggle, onImport, progress, error, hint })
                     width: `${(progress.processed / progress.total) * 100}%`,
                     transition: 'width 300ms ease',
                   }} />
-                </div>
-              )}
             </div>
           )}
-        </motion.div>
+        </div>
+      )}
+    </motion.div>
       )}
     </>
   );

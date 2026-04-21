@@ -154,8 +154,40 @@ class Database {
     if (!cols.includes('category')) this.db.exec('ALTER TABLE moments ADD COLUMN category TEXT');
     if (!cols.includes('tone')) this.db.exec('ALTER TABLE moments ADD COLUMN tone TEXT');
     if (!cols.includes('summary')) this.db.exec('ALTER TABLE moments ADD COLUMN summary TEXT');
+    // 'author' separates the user's own voice (claude/chatgpt turns, their own
+    // posts) from ambient content (feed posts by others). Default is 'self'
+    // because every pre-social row is the user's own dialogue.
+    if (!cols.includes('author')) {
+      this.db.exec("ALTER TABLE moments ADD COLUMN author TEXT NOT NULL DEFAULT 'self'");
+      // Backfill: feed captures we already took are other-people's content.
+      this.db.exec(
+        "UPDATE moments SET author = 'other' " +
+        "WHERE json_extract(metadata, '$.capture_mode') = 'social-feed'"
+      );
+    }
+    // 'kind' routes moments through the pipeline (see processing/kinds.js).
+    // 'dialogue' = conversational turn (gets grouped and thread-categorized);
+    // 'post' = standalone social post (skips thread categorization, stands alone).
+    // Default is 'dialogue' so every legacy row keeps its old behavior.
+    if (!cols.includes('kind')) {
+      this.db.exec("ALTER TABLE moments ADD COLUMN kind TEXT NOT NULL DEFAULT 'dialogue'");
+      // Backfill: anything captured via the social crawler is a post, not dialogue.
+      this.db.exec(
+        "UPDATE moments SET kind = 'post' " +
+        "WHERE json_extract(metadata, '$.capture_mode') IN ('social-feed', 'social-self')"
+      );
+      // Wipe stale thread labels on posts — they were produced by the old
+      // mega-thread categorizer and are meaningless. Posts now render from
+      // entities alone.
+      this.db.exec(
+        "UPDATE moments SET topic = NULL, category = NULL, tone = NULL, summary = NULL " +
+        "WHERE kind = 'post'"
+      );
+    }
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_moments_topic ON moments(topic)');
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_moments_category ON moments(category)');
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_moments_author ON moments(author)');
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_moments_kind ON moments(kind)');
 
     // --- Dedup migration (one-time per DB) ------------------------------
     // The connector window used to insert every captured message on every
@@ -244,15 +276,17 @@ class Database {
     // Returns { id, inserted } — id is null when the row was a duplicate.
     const stmt = this.db.prepare(`
       INSERT OR IGNORE INTO moments
-        (timestamp, source, raw_content, metadata, content_hash)
-      VALUES (?, ?, ?, ?, ?)
+        (timestamp, source, raw_content, metadata, content_hash, author, kind)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
       moment.timestamp,
       moment.source,
       moment.raw_content,
       JSON.stringify(moment.metadata || {}),
-      hashContent(moment.raw_content)
+      hashContent(moment.raw_content),
+      moment.author === 'other' ? 'other' : 'self',
+      moment.kind || 'dialogue'
     );
     if (result.changes === 0) return { id: null, inserted: false };
     return { id: result.lastInsertRowid, inserted: true };
@@ -425,17 +459,19 @@ class Database {
    * @param {number} limit  max number of threads to return
    */
   getUncategorizedThreads(limit = 10) {
+    // Only dialogue kinds are grouped into threads. Posts (social) stand alone
+    // and never pass through this stage — see processing/kinds.js.
     const threadRows = this.db.prepare(`
       SELECT json_extract(metadata, '$.conversation_name') as title,
              COUNT(*) as total_messages,
              MAX(timestamp) as last_active,
              MIN(timestamp) as first_active
       FROM moments
-      WHERE source = 'conversation'
+      WHERE kind = 'dialogue'
         AND json_extract(metadata, '$.conversation_name') IS NOT NULL
         AND id IN (
           SELECT id FROM moments
-          WHERE source = 'conversation' AND (category IS NULL OR category = '')
+          WHERE kind = 'dialogue' AND (category IS NULL OR category = '')
         )
       GROUP BY title
       ORDER BY last_active DESC
@@ -446,7 +482,7 @@ class Database {
       const messages = this.db.prepare(`
         SELECT id, timestamp, raw_content, metadata
         FROM moments
-        WHERE source = 'conversation'
+        WHERE kind = 'dialogue'
           AND json_extract(metadata, '$.conversation_name') = ?
         ORDER BY timestamp ASC
       `).all(row.title).map(m => ({
@@ -472,7 +508,7 @@ class Database {
     const result = this.db.prepare(`
       UPDATE moments
       SET topic = ?, category = ?, tone = ?, summary = ?
-      WHERE source = 'conversation'
+      WHERE kind = 'dialogue'
         AND json_extract(metadata, '$.conversation_name') = ?
     `).run(
       topic || null,
@@ -495,7 +531,7 @@ class Database {
     const result = this.db.prepare(`
       UPDATE moments
       SET topic = NULL, category = NULL, tone = NULL, summary = NULL
-      WHERE source = 'conversation'
+      WHERE kind = 'dialogue'
         AND category = 'other'
         AND (topic IS NULL OR topic = '')
         AND (summary IS NULL OR summary = '')
@@ -513,7 +549,7 @@ class Database {
     const result = this.db.prepare(`
       UPDATE moments
       SET topic = NULL, category = NULL, tone = NULL, summary = NULL
-      WHERE source = 'conversation'
+      WHERE kind = 'dialogue'
     `).run();
     return result.changes;
   }
@@ -525,14 +561,14 @@ class Database {
     const pending = this.db.prepare(`
       SELECT COUNT(DISTINCT json_extract(metadata, '$.conversation_name')) as c
       FROM moments
-      WHERE source = 'conversation'
+      WHERE kind = 'dialogue'
         AND json_extract(metadata, '$.conversation_name') IS NOT NULL
         AND (category IS NULL OR category = '')
     `).get().c;
     const total = this.db.prepare(`
       SELECT COUNT(DISTINCT json_extract(metadata, '$.conversation_name')) as c
       FROM moments
-      WHERE source = 'conversation'
+      WHERE kind = 'dialogue'
         AND json_extract(metadata, '$.conversation_name') IS NOT NULL
     `).get().c;
     return { pending, total, done: total - pending };

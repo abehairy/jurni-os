@@ -54,6 +54,15 @@ contextBridge.exposeInMainWorld('jurni', {
   getLogs: () => ipcRenderer.invoke('get-logs'),
   getLogPath: () => ipcRenderer.invoke('get-log-path'),
 
+  // Auto-update
+  checkForUpdates: () => ipcRenderer.invoke('update-check'),
+  installUpdate: () => ipcRenderer.invoke('update-install'),
+  onUpdateStatus: (callback) => {
+    const handler = (_, status) => callback(status);
+    ipcRenderer.on('update-status', handler);
+    return () => ipcRenderer.removeListener('update-status', handler);
+  },
+
   // Events from main process
   onImportProgress: (callback) => {
     const handler = (_, progress) => callback(progress);

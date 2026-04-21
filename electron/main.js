@@ -13,6 +13,15 @@ const {
   DEFAULT_LANDSCAPE_MODEL,
 } = require('../processing/processor');
 const { computeScores } = require('../scoring/engine');
+const { getBrowserConnector } = require('./connectors/registry');
+const { getKindProfile } = require('../processing/kinds');
+const { initAutoUpdater } = require('./updater');
+
+// Pretend to be a real Chrome build. Some sites (X, LinkedIn, Instagram,
+// Facebook) return a blank page to anything whose UA contains "Electron".
+const CHROME_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 const JURNI_DIR = path.join(require('os').homedir(), '.jurni');
 const LOG_PATH = path.join(JURNI_DIR, 'crawler.log');
@@ -130,10 +139,11 @@ function createTray() {
 // ---- Browser Connector Window ----
 
 function openConnectorBrowser(provider) {
-  const urls = {
-    claude: 'https://claude.ai',
-    chatgpt: 'https://chatgpt.com',
-  };
+  const connector = getBrowserConnector(provider);
+  if (!connector) {
+    log('connector', `Unknown connector provider: ${provider}`);
+    return;
+  }
 
   log('connector', `Opening ${provider} browser window`);
 
@@ -149,7 +159,7 @@ function openConnectorBrowser(provider) {
   const win = new BrowserWindow({
     width: 1000,
     height: 750,
-    title: `Jurni — Sign in to ${provider === 'claude' ? 'Claude' : 'ChatGPT'}`,
+    title: `Jurni — Sign in to ${connector.title}`,
     webPreferences: {
       preload: path.join(__dirname, '..', 'channels', 'browser-preload.js'),
       contextIsolation: false,
@@ -157,8 +167,12 @@ function openConnectorBrowser(provider) {
     },
   });
 
-  log('connector', `Loading URL: ${urls[provider]} (partition: ${partition})`);
-  win.loadURL(urls[provider]);
+  // Real Chrome user agent. Social sites (X, LinkedIn, Instagram, Facebook)
+  // serve a blank page to anything that identifies as "Electron".
+  win.webContents.setUserAgent(CHROME_USER_AGENT);
+
+  log('connector', `Loading URL: ${connector.url} (partition: ${partition})`);
+  win.loadURL(connector.url);
   connectorWindows[provider] = win;
 
   win.on('closed', () => {
@@ -197,9 +211,18 @@ function sendToMain(channel, data) {
 function handleCapturedMessage(event, message) {
   if (!db) { log('main', 'handleCapturedMessage: db not ready'); return; }
 
+  // Kind routes processing (see processing/kinds.js). Registry is the
+  // single source of truth: no if/else here, just a lookup.
+  const connector = message.provider ? getBrowserConnector(message.provider) : null;
+  const kind = connector?.kind || 'dialogue';
+
   const moment = {
     timestamp: message.timestamp,
     source: 'conversation',
+    kind,
+    // 'self' (claude/chatgpt user turns, the user's own posts) vs 'other'
+    // (feed posts by strangers). Defaulted at DB layer; set here when known.
+    author: message.author === 'other' ? 'other' : 'self',
     raw_content: message.text,
     metadata: {
       provider: message.provider,
@@ -207,6 +230,10 @@ function handleCapturedMessage(event, message) {
       url: message.url,
       capture_mode: message.source || 'live',
       role: message.role || 'user',
+      // When the post is authored by someone else (feed scrape), keep who
+      // wrote it so entity enrichment can pick it up later.
+      author_handle: message.authorHandle || null,
+      author_name: message.authorName || null,
     },
   };
 
@@ -298,6 +325,23 @@ function scheduleAutoProcess() {
   }, 10000); // Wait 10s between batch attempts to avoid spam
 }
 
+/**
+ * Split a batch of moments by (kind, author). Each sub-batch is homogeneous
+ * so we can route it through processBatch with a single entity-mention weight
+ * derived from KIND_PROFILES (see processing/kinds.js).
+ */
+function groupMomentsByProfile(moments) {
+  const groups = new Map();
+  for (const m of moments) {
+    const kind = m.kind || 'dialogue';
+    const author = m.author === 'other' ? 'other' : 'self';
+    const key = `${kind}:${author}`;
+    if (!groups.has(key)) groups.set(key, { kind, author, moments: [] });
+    groups.get(key).moments.push(m);
+  }
+  return Array.from(groups.values());
+}
+
 async function autoProcessBatch() {
   if (autoProcessRunning) return;
   const apiKey = db.getConfigValue('openrouter_api_key');
@@ -313,30 +357,47 @@ async function autoProcessBatch() {
   const existingEntities = db.getEntities();
   const recentPatterns = db.getPatterns();
   const analysisModel = db.getConfigValue('analysis_model') || DEFAULT_ANALYSIS_MODEL;
-
   const identity = db.getUserIdentity();
 
-  try {
-    const analysis = await processBatch(batch, existingEntities, recentPatterns, apiKey, analysisModel, identity);
-    log('main', 'LLM analysis complete', {
-      model: analysisModel,
-      entities: analysis.entities?.length || 0,
-      patterns: analysis.patterns?.length || 0,
-      emotions: analysis.emotions?.length || 0,
-      decisions: analysis.decisions?.length || 0,
-    });
-    if (analysis.entities) analysis.entities.forEach(e => {
-      try { db.upsertEntity(e); } catch (err) {
-        log('main', 'upsertEntity skipped', { name: e.name, type: e.type, err: err.message });
-      }
-    });
-    if (analysis.patterns) analysis.patterns.forEach(p => db.insertPattern(p));
-    if (analysis.emotions) analysis.emotions.forEach(e => db.insertEmotion(e));
-    if (analysis.decisions) analysis.decisions.forEach(d => db.insertDecision(d));
+  // Route each (kind, author) sub-batch through processBatch independently.
+  // Entity mention_counts from self-authored sub-batches get multiplied by
+  // the kind's selfMentionWeight — this is how "people you talk about" rank
+  // above "people who appear in your feed". No if/else on provider anywhere.
+  const groups = groupMomentsByProfile(batch);
 
-    // Mark all moments in the batch as processed. Landscape fields (topic/
-    // category/tone/summary) are filled in by the thread categorization
-    // pass, not here.
+  try {
+    for (const group of groups) {
+      const profile = getKindProfile(group.kind);
+      const weight = group.author === 'self' ? profile.selfMentionWeight : 1;
+
+      const analysis = await processBatch(
+        group.moments, existingEntities, recentPatterns, apiKey, analysisModel, identity
+      );
+      log('main', 'LLM analysis complete', {
+        kind: group.kind,
+        author: group.author,
+        weight,
+        count: group.moments.length,
+        entities: analysis.entities?.length || 0,
+        patterns: analysis.patterns?.length || 0,
+        emotions: analysis.emotions?.length || 0,
+        decisions: analysis.decisions?.length || 0,
+      });
+
+      if (analysis.entities) analysis.entities.forEach(e => {
+        try {
+          db.upsertEntity({ ...e, mention_count: (e.mention_count || 1) * weight });
+        } catch (err) {
+          log('main', 'upsertEntity skipped', { name: e.name, type: e.type, err: err.message });
+        }
+      });
+      if (analysis.patterns) analysis.patterns.forEach(p => db.insertPattern(p));
+      if (analysis.emotions) analysis.emotions.forEach(e => db.insertEmotion(e));
+      if (analysis.decisions) analysis.decisions.forEach(d => db.insertDecision(d));
+    }
+
+    // Mark all moments in the batch as processed. Thread categorization runs
+    // separately and only touches kind='dialogue' moments.
     for (const m of batch) db.markMomentProcessed(m.id);
 
     const scores = computeScores(db);
@@ -523,6 +584,9 @@ app.whenReady().then(() => {
 
   createWindow();
   createTray();
+
+  // Auto-update (production only — skipped in dev).
+  initAutoUpdater({ log, sendToMain });
 
   // Kick-start processing if there are unprocessed moments from a previous session
   const unprocessed = db.getUnprocessedMoments();
@@ -893,7 +957,8 @@ app.whenReady().then(() => {
    * active session instead of spawning a second one.
    */
   ipcMain.handle('sync-provider', async (_, provider) => {
-    if (!provider || !['claude', 'chatgpt'].includes(provider)) {
+    const connector = getBrowserConnector(provider);
+    if (!connector || !connector.supportsSync) {
       return { ok: false, error: 'Unknown provider' };
     }
     if (syncSessions.has(provider)) {
@@ -928,17 +993,18 @@ app.whenReady().then(() => {
       }
 
       // Otherwise spawn a hidden window with the persistent login partition
-      const urls = { claude: 'https://claude.ai', chatgpt: 'https://chatgpt.com' };
       const win = new BrowserWindow({
         width: 1000,
         height: 750,
         show: false,
+        title: `Jurni — Syncing ${connector.title}`,
         webPreferences: {
           preload: path.join(__dirname, '..', 'channels', 'browser-preload.js'),
           contextIsolation: false,
           partition: `persist:${provider}`,
         },
       });
+      win.webContents.setUserAgent(CHROME_USER_AGENT);
       session.hiddenWin = win;
       connectorWindows[provider] = win;
 
@@ -967,7 +1033,7 @@ app.whenReady().then(() => {
         }
       });
 
-      win.loadURL(urls[provider]);
+      win.loadURL(connector.url);
     });
   });
 
@@ -1015,15 +1081,24 @@ app.whenReady().then(() => {
         const batch = unprocessedMoments.slice(i, i + batchSize);
         const existingEntities = db.getEntities();
         const recentPatterns = db.getPatterns();
+        const groups = groupMomentsByProfile(batch);
 
         try {
-          const analysis = await processBatch(batch, existingEntities, recentPatterns, apiKey, analysisModel, identity);
-          if (analysis.entities) analysis.entities.forEach(e => {
-            try { db.upsertEntity(e); } catch {}
-          });
-          if (analysis.patterns) analysis.patterns.forEach(p => db.insertPattern(p));
-          if (analysis.emotions) analysis.emotions.forEach(e => db.insertEmotion(e));
-          if (analysis.decisions) analysis.decisions.forEach(d => db.insertDecision(d));
+          for (const group of groups) {
+            const profile = getKindProfile(group.kind);
+            const weight = group.author === 'self' ? profile.selfMentionWeight : 1;
+            const analysis = await processBatch(
+              group.moments, existingEntities, recentPatterns, apiKey, analysisModel, identity
+            );
+            if (analysis.entities) analysis.entities.forEach(e => {
+              try {
+                db.upsertEntity({ ...e, mention_count: (e.mention_count || 1) * weight });
+              } catch {}
+            });
+            if (analysis.patterns) analysis.patterns.forEach(p => db.insertPattern(p));
+            if (analysis.emotions) analysis.emotions.forEach(e => db.insertEmotion(e));
+            if (analysis.decisions) analysis.decisions.forEach(d => db.insertDecision(d));
+          }
           for (const m of batch) db.markMomentProcessed(m.id);
         } catch (err) {
           console.error('Batch processing error:', err.message);

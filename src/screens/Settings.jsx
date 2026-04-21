@@ -390,17 +390,25 @@ export default function Settings({ api, config, setConfig, onReset }) {
       <section className="glass-card p-6">
         <div className="flex items-center gap-2 mb-1">
           <RefreshCw size={18} className="text-terracotta" />
-          <h3 className="font-display text-lg">Sync Conversations</h3>
+          <h3 className="font-display text-lg">Sync Sources</h3>
         </div>
         <p className="text-sm text-warm-gray mb-4">
-          Pull the latest threads from connected sources. Already-captured
-          messages are skipped automatically — safe to click any time.
+          Pull the latest data from connected sources. Already-captured
+          items are skipped automatically — safe to click any time.
         </p>
         <div className="space-y-3">
-          {['claude', 'chatgpt'].map(provider => {
+          {['claude', 'chatgpt', 'x', 'linkedin', 'instagram', 'facebook'].map(provider => {
             const enabled = config[`connector_${provider}`] === 'enabled';
             const state = syncState[provider] || {};
-            const label = provider === 'claude' ? 'Claude' : 'ChatGPT';
+            const labels = {
+              claude: 'Claude',
+              chatgpt: 'ChatGPT',
+              x: 'X',
+              linkedin: 'LinkedIn',
+              instagram: 'Instagram',
+              facebook: 'Facebook',
+            };
+            const label = labels[provider] || provider;
             const pct = state.total > 0 ? Math.min(100, Math.round((state.processed / state.total) * 100)) : 0;
             return (
               <div key={provider} className="p-3 bg-white/40 rounded-lg">
