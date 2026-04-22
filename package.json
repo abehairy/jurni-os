@@ -73,13 +73,8 @@
       ],
       "category": "public.app-category.lifestyle",
       "icon": "electron/assets/icon.icns",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "electron/assets/entitlements.mac.plist",
-      "entitlementsInherit": "electron/assets/entitlements.mac.plist",
-      "notarize": {
-        "teamId": "U2EBW657CK"
-      }
+      "identity": null,
+      "gatekeeperAssess": false
     },
     "dmg": {
       "sign": false
