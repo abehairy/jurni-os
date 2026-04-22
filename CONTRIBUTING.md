@@ -37,7 +37,7 @@ Prereqs:
 Setup:
 
 ```bash
-git clone https://github.com/everestminds/jurni.git
+git clone https://github.com/abehairy/jurni.git
 cd jurni
 npm install
 npm run dev

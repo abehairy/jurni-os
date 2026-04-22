@@ -28,16 +28,15 @@ Before your first release, confirm:
 
 Publish target — baked into `package.json`:
 
-- **Owner**: `everestminds`
+- **Owner**: `abehairy` (your personal GitHub account)
 - **Repo**: `jurni`
 
 Before your first release:
 
-- [ ] Create the `everestminds` organization on GitHub (if not already)
-- [ ] Create repo `everestminds/jurni` (start it empty; we'll push from here)
-- [ ] `git remote add origin git@github.com:everestminds/jurni.git`
-- [ ] `git push -u origin main`
-- [ ] Create a **Personal Access Token** (classic) with `repo` scope at <https://github.com/settings/tokens>, save as `GH_TOKEN` in `.env`
+- [ ] `gh` CLI is installed and logged in as `abehairy` with `repo` scope
+- [ ] Repo exists at `github.com/abehairy/jurni` (create with `gh repo create abehairy/jurni --public --source=. --push`)
+- [ ] `GH_TOKEN` in `.env` — electron-builder uses it to upload release assets.
+      Easiest: `echo "GH_TOKEN=$(gh auth token)" >> .env`
 
 ### 3. Local `.env`
 

@@ -7,13 +7,13 @@
     "email": "behairy@everestminds.com"
   },
   "license": "MIT",
-  "homepage": "https://github.com/everestminds/jurni",
+  "homepage": "https://github.com/abehairy/jurni",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/everestminds/jurni.git"
+    "url": "git+https://github.com/abehairy/jurni.git"
   },
   "bugs": {
-    "url": "https://github.com/everestminds/jurni/issues"
+    "url": "https://github.com/abehairy/jurni/issues"
   },
   "keywords": [
     "personal-dashboard",
@@ -86,7 +86,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "everestminds",
+      "owner": "abehairy",
       "repo": "jurni",
       "releaseType": "release"
     },
