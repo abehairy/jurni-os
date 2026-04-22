@@ -4,25 +4,22 @@ How to ship a new version of Jurni with auto-update working.
 
 ## One-time setup (do once, then never again)
 
-### 1. Apple Developer account (already configured)
+### 1. Apple Developer account
 
-Current signing identity — baked into `package.json`:
-
-- **Team ID**: `U2EBW657CK`
-- **Entity**: Everest Minds for Programming S.A.E
-- **Apple ID**: `behairy@everestminds.com`
+Signing identity is configured via `.env` (gitignored) and referenced by
+`package.json → build.mac.notarize.teamId`.
 
 Before your first release, confirm:
 
-- [x] Apple Developer membership active (renews Dec 5, 2026)
+- [ ] Apple Developer Program membership active
 - [ ] **Developer ID Application certificate** in your Keychain. To verify:
   - Open Keychain Access → login → search `Developer ID Application`
-  - You should see: `Developer ID Application: Everest Minds for Programming S.A.E (U2EBW657CK)`
   - If missing: Xcode → Settings → Accounts → your team → Manage Certificates → + → `Developer ID Application`
 - [ ] **App-specific password** for notarization:
   - Go to <https://account.apple.com> → Sign-In & Security → App-Specific Passwords
   - Generate one called "Jurni notarization"
   - Copy into `.env` as `APPLE_APP_SPECIFIC_PASSWORD`
+- [ ] Fill `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_SPECIFIC_PASSWORD` in `.env`
 
 ### 2. GitHub setup
 

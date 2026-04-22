@@ -10,7 +10,10 @@ within 4 hours of launch.
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-Email `security@everestminds.com` with:
+Open a private security advisory on GitHub:
+[github.com/abehairy/jurni-os/security/advisories/new](https://github.com/abehairy/jurni-os/security/advisories/new)
+
+Include:
 
 - A description of the issue
 - Steps to reproduce (if possible, a proof-of-concept)
@@ -44,7 +47,7 @@ Out of scope:
 Because local-first is a first-class value:
 
 - All user data lives in `~/.jurni/` on the user's Mac — nothing is
-  transmitted to Everest Minds or any Jurni-controlled server
+  transmitted to any Jurni-controlled server
 - LLM calls go direct to the user's chosen provider using the user's own
   API key (no Jurni-owned proxy)
 - No telemetry, analytics, or crash reporting

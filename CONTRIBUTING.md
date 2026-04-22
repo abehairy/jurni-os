@@ -169,8 +169,8 @@ Use the [bug report template](./.github/ISSUE_TEMPLATE/bug_report.md). Include:
 
 ## Reporting security issues
 
-Do **not** open a public issue. Email `security@everestminds.com` — see
-[SECURITY.md](./SECURITY.md).
+Do **not** open a public issue. See [SECURITY.md](./SECURITY.md) — it points
+to GitHub's private security advisories.
 
 ## Community
 

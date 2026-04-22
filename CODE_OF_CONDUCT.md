@@ -34,8 +34,11 @@ Examples of unacceptable behavior:
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to `conduct@everestminds.com`. All complaints will be reviewed and
-investigated promptly and fairly.
+reported by opening a private security advisory at
+[github.com/abehairy/jurni-os/security/advisories/new](https://github.com/abehairy/jurni-os/security/advisories/new)
+or by contacting the maintainer ([@abehairy](https://github.com/abehairy))
+directly. All complaints will be reviewed and investigated promptly and
+fairly.
 
 Maintainers are obligated to respect the privacy and security of the reporter.
 

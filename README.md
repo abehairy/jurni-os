@@ -165,5 +165,4 @@ changes: push to `main` — Pages picks it up from `docs/` automatically
 
 ## Maintainer
 
-Built by [Everest Minds for Programming](https://everestminds.com). Lead:
-Ahmed Behairy ([@behairy](https://github.com/behairy)).
+Ahmed Behairy ([@abehairy](https://github.com/abehairy)).

@@ -11,7 +11,6 @@ Versioning: [Semantic Versioning](https://semver.org).
 
 ### Added
 - First signed + notarized release on the public `jurni-os` repo.
-  Apple Developer ID: `EVEREST MINDS FOR PROGRAMMING S.A.E (U2EBW657CK)`.
 - Auto-update via `electron-updater` with signed + notarized macOS builds
   for both Apple Silicon (arm64) and Intel (x64). See
   [RELEASE.md](./RELEASE.md).
