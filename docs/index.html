@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Jurni — a mirror for the life you've been living in your chats</title>
-<meta name="description" content="Jurni reads your Claude and ChatGPT history and shows you the landscape of what's actually mattered — week by week, topic by topic. Local-first, open source, macOS." />
+<title>Jurni — read back your year, from your own chats</title>
+<meta name="description" content="Jurni connects to Claude, ChatGPT, X, LinkedIn, Instagram, and Facebook, and shows you what you've actually been thinking about — week by week, topic by topic. Runs on your Mac with your own AI key. Open source." />
 
-<meta property="og:title" content="Jurni — a mirror for the life you've been living in your chats" />
-<meta property="og:description" content="Local-first, open-source landscape of what you've actually been living in. Your key, your machine, your data." />
+<meta property="og:title" content="Jurni — read back your year, from your own chats" />
+<meta property="og:description" content="Connects to Claude, ChatGPT, X, LinkedIn, Instagram, Facebook. Shows you the topics, people, and tone of every week. All on your Mac. Open source." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://abehairy.github.io/jurni-os" />
 <meta property="og:image" content="https://abehairy.github.io/jurni-os/logo.png" />
@@ -155,19 +155,8 @@
      Hero
      ====================================================================== */
   .hero {
-    padding: 88px 0 48px;
+    padding: 96px 0 48px;
     position: relative;
-  }
-  .hero-mark {
-    width: 96px; height: 96px;
-    margin-bottom: 32px;
-    display: block;
-    filter: drop-shadow(0 10px 24px rgba(31, 30, 27, 0.08));
-    animation: float 8s ease-in-out infinite;
-  }
-  @keyframes float {
-    0%, 100% { transform: translateY(0) rotate(0deg); }
-    50%      { transform: translateY(-4px) rotate(6deg); }
   }
   .hero .eyebrow {
     display: inline-flex; align-items: center; gap: 10px;
@@ -222,6 +211,127 @@
   }
   .hero-meta .sep { opacity: 0.5; }
   .hero-meta .ok { color: var(--accent-strong); }
+
+  /* ======================================================================
+     Connectors strip — answers "what does it plug into?" at a glance.
+     Six real brand marks converging into the Jurni logo.
+     ====================================================================== */
+  .connectors {
+    padding: 88px 0 64px;
+    border-top: 1px solid var(--border);
+    background:
+      radial-gradient(700px 260px at 50% 100%, rgba(217, 119, 87, 0.06), transparent 60%);
+  }
+  .connectors .label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; letter-spacing: 0.14em;
+    color: var(--text-faint); text-transform: uppercase;
+    text-align: center;
+    display: block;
+  }
+  .connectors h3 {
+    font-family: 'Instrument Serif', serif;
+    font-weight: 400;
+    font-size: clamp(24px, 3vw, 32px);
+    letter-spacing: -0.01em;
+    text-align: center;
+    margin-top: 14px;
+    max-width: 30ch;
+    margin-left: auto; margin-right: auto;
+    line-height: 1.22;
+  }
+  .connectors h3 em { color: var(--accent-strong); font-style: italic; }
+
+  .conn-stage {
+    margin-top: 52px;
+    position: relative;
+    max-width: 820px;
+    margin-left: auto; margin-right: auto;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 36px;
+  }
+  .conn-row {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 14px;
+    width: 100%;
+    position: relative;
+    z-index: 2;
+  }
+  .conn-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 12px 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  }
+  .conn-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--border-strong);
+    box-shadow: 0 10px 24px -10px rgba(31, 30, 27, 0.12);
+  }
+  .conn-icon {
+    width: 32px; height: 32px;
+    border-radius: 9px;
+    display: grid; place-items: center;
+    color: #fff;
+    font-weight: 600;
+    font-size: 15px;
+    font-family: 'Inter', sans-serif;
+    letter-spacing: -0.01em;
+  }
+  .conn-icon svg { width: 18px; height: 18px; }
+  .conn-name {
+    font-size: 12px; color: var(--text-muted);
+    font-weight: 500;
+  }
+  .ic-claude    { background: #D97757; }
+  .ic-chatgpt   { background: #10A37F; }
+  .ic-x         { background: #0F1419; }
+  .ic-linkedin  { background: #0A66C2; }
+  .ic-instagram { background: linear-gradient(135deg, #F58529 0%, #DD2A7B 50%, #8134AF 100%); }
+  .ic-facebook  { background: #1877F2; }
+
+  /* Connector lines drawn with SVG below */
+  .conn-lines {
+    position: absolute;
+    top: 68px; left: 0; right: 0;
+    height: 80px;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .conn-lines path {
+    fill: none;
+    stroke: var(--border-strong);
+    stroke-width: 1.2;
+    stroke-dasharray: 4 5;
+    opacity: 0.55;
+  }
+  .conn-center {
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    margin-top: 14px;
+    position: relative; z-index: 2;
+  }
+  .conn-center img {
+    width: 72px; height: 72px;
+    filter: drop-shadow(0 14px 28px rgba(31, 30, 27, 0.12));
+  }
+  .conn-center .pin {
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--text);
+    color: var(--shell);
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.04em;
+  }
+  .conn-center .pin svg { display: inline-block; vertical-align: middle; margin-right: 6px; width: 12px; height: 12px; }
+  @media (max-width: 720px) {
+    .conn-row { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .conn-lines { display: none; }
+    .conn-name { font-size: 11px; }
+  }
 
   /* ======================================================================
      The mock — an honest rendering of Life Landscape, not an invention.
@@ -596,9 +706,9 @@
       <span>Jurni</span>
     </a>
     <div class="nav-links">
-      <a href="#see">What you see</a>
+      <a href="#sources">Sources</a>
+      <a href="#see">What it shows</a>
       <a href="#how">How it works</a>
-      <a href="#privacy">Privacy</a>
       <a href="https://github.com/abehairy/jurni-os" target="_blank" rel="noopener">GitHub</a>
       <a href="#download" class="nav-cta">Download</a>
     </div>
@@ -608,23 +718,22 @@
 <!-- ========================= HERO ========================= -->
 <header class="hero" id="top">
   <div class="wrap">
-    <img src="logo.png" alt="" class="hero-mark" width="96" height="96" />
     <span class="eyebrow">
       <span class="eyebrow-dot"></span>
       v0.1.1 &middot; macOS, signed &amp; notarized by Apple
     </span>
 
     <h1 class="hero-title serif">
-      A mirror for the life<br>
-      you've been living<br>
-      <em>in your chats.</em>
+      Read back your year,<br>
+      <em>from your own chats.</em>
     </h1>
 
     <p class="hero-lede">
-      Jurni reads your <strong>Claude</strong> and <strong>ChatGPT</strong> history
-      and draws the landscape of what's actually mattered &mdash; the topics you
-      keep returning to, the people you name, the tone of each week. No score.
-      No prescription. Just recognition.
+      Most of what you actually think about &mdash; your work, the people you
+      care about, what you're learning, what's bothering you &mdash; ends up
+      in a chat window. Jurni connects to the six places you already talk
+      (Claude, ChatGPT, X, LinkedIn, Instagram, Facebook), reads them back
+      on your Mac, and shows you the picture that comes out.
     </p>
 
     <div class="hero-cta">
@@ -647,6 +756,72 @@
     </div>
   </div>
 </header>
+
+<!-- ========================= CONNECTORS ========================= -->
+<section class="connectors" id="sources">
+  <div class="wrap">
+    <span class="label">One-click connect</span>
+    <h3 class="serif">Plugs into the <em>six places</em> you already talk.</h3>
+
+    <div class="conn-stage reveal">
+      <div class="conn-row">
+        <div class="conn-card">
+          <div class="conn-icon ic-claude">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4.8 18.6 10.2 5h2.4l5.4 13.6h-2.6l-1.3-3.4H8.7l-1.3 3.4zm4.7-5.5h5l-2.5-6.6z"/></svg>
+          </div>
+          <div class="conn-name">Claude</div>
+        </div>
+        <div class="conn-card">
+          <div class="conn-icon ic-chatgpt">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M22.28 9.82a5.95 5.95 0 0 0-.52-4.91 6.05 6.05 0 0 0-6.52-2.9A6.05 6.05 0 0 0 4.98 4.18a5.95 5.95 0 0 0-3.98 2.9 6.05 6.05 0 0 0 .74 7.1 5.97 5.97 0 0 0 .51 4.91 6.05 6.05 0 0 0 6.52 2.9 5.97 5.97 0 0 0 4.5 2.01 6.06 6.06 0 0 0 5.78-4.19 5.99 5.99 0 0 0 3.98-2.9 6.05 6.05 0 0 0-.75-7.09zm-9.06 12.68a4.48 4.48 0 0 1-2.88-1.04c.04-.02.1-.05.15-.08l4.83-2.79a.79.79 0 0 0 .4-.69v-6.8l2.04 1.18.02.05v5.64a4.5 4.5 0 0 1-4.56 4.53zm-9.76-4.17a4.48 4.48 0 0 1-.54-3.02c.04.02.1.06.14.08l4.83 2.8c.25.14.55.14.8 0l5.9-3.41v2.36l-.03.05L9.7 20.05a4.5 4.5 0 0 1-6.24-1.72zm-1.27-10.6a4.48 4.48 0 0 1 2.35-1.97v5.75c0 .28.15.55.4.69l5.88 3.4-2.04 1.18-.05.02-4.88-2.82a4.5 4.5 0 0 1-1.66-6.25zm16.79 3.9-5.89-3.4 2.04-1.18.05-.02 4.88 2.82a4.5 4.5 0 0 1-.69 8.14V12.44a.8.8 0 0 0-.39-.71zm2.03-3.06a4.54 4.54 0 0 0-.14-.08L15.04 6.3a.79.79 0 0 0-.8 0l-5.9 3.41V7.36l.03-.05 4.88-2.82a4.5 4.5 0 0 1 6.68 4.66zm-12.78 4.2-2.04-1.18-.02-.05V6.9a4.5 4.5 0 0 1 7.38-3.45l-.15.08L8.57 6.32a.79.79 0 0 0-.4.7zm1.1-2.39 2.63-1.52 2.63 1.52v3.04l-2.63 1.52-2.63-1.52z"/></svg>
+          </div>
+          <div class="conn-name">ChatGPT</div>
+        </div>
+        <div class="conn-card">
+          <div class="conn-icon ic-x">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+          </div>
+          <div class="conn-name">X</div>
+        </div>
+        <div class="conn-card">
+          <div class="conn-icon ic-linkedin">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.063 2.063 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+          </div>
+          <div class="conn-name">LinkedIn</div>
+        </div>
+        <div class="conn-card">
+          <div class="conn-icon ic-instagram">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163C8.741 0 8.332.013 7.052.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12s.014 3.668.072 4.948c.2 4.358 2.618 6.78 6.98 6.98C8.332 23.988 8.741 24 12 24s3.668-.012 4.948-.072c4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948s-.014-3.667-.072-4.947c-.196-4.354-2.617-6.78-6.979-6.98C15.668.013 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
+          </div>
+          <div class="conn-name">Instagram</div>
+        </div>
+        <div class="conn-card">
+          <div class="conn-icon ic-facebook">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          </div>
+          <div class="conn-name">Facebook</div>
+        </div>
+      </div>
+
+      <svg class="conn-lines" viewBox="0 0 820 80" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M 68 0 Q 68 40, 410 76" />
+        <path d="M 204 0 Q 204 40, 410 76" />
+        <path d="M 342 0 Q 342 40, 410 76" />
+        <path d="M 478 0 Q 478 40, 410 76" />
+        <path d="M 614 0 Q 614 40, 410 76" />
+        <path d="M 752 0 Q 752 40, 410 76" />
+      </svg>
+
+      <div class="conn-center">
+        <img src="logo.png" alt="Jurni" width="72" height="72" />
+        <div class="pin">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          on your Mac &middot; your key &middot; your data
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- ========================= MOCK: the real Life Landscape ========================= -->
 <section class="mock-wrap" style="padding-top: 20px;">
@@ -789,14 +964,14 @@
 <!-- ========================= WHAT YOU SEE ========================= -->
 <section id="see" style="padding-top: 0;">
   <div class="wrap">
-    <span class="section-label">What you're actually looking at</span>
+    <span class="section-label">What it shows you</span>
     <h2 class="section-title serif">
-      Three axes. <em>Nothing invented.</em>
+      Three things, nothing made up.
     </h2>
     <p class="section-lede">
-      Jurni doesn't generate a score or a prescription. It names what's
-      already in your conversations, and lets you slide week by week through
-      how it's shifted.
+      Jurni doesn't generate a score or tell you what to do. It pulls out
+      what's already in your conversations and lets you slide week by week
+      to see how it's changed.
     </p>
 
     <div class="rows">
@@ -806,11 +981,11 @@
           <div class="label">Topics</div>
         </div>
         <div>
-          <h3 class="serif">The named things you return to.</h3>
+          <h3 class="serif">What you actually talk about.</h3>
           <p>
-            Not tags. Not keywords. The actual subjects &mdash; <code>Clinera</code>,
-            <code>Nesma</code>, <code>Career shift</code>, <code>Tokyo</code>. Tile size
-            = how much of your attention that period. Tile color = which domain it belongs to.
+            The real subjects &mdash; <code>Clinera</code>, <code>Nesma</code>,
+            <code>Career shift</code>, <code>Tokyo</code>, whatever yours are.
+            Bigger tile means more of that week went to it.
           </p>
         </div>
       </div>
@@ -821,12 +996,11 @@
           <div class="label">Domains</div>
         </div>
         <div>
-          <h3 class="serif">Twelve places a life gets lived.</h3>
+          <h3 class="serif">Where in your life it sits.</h3>
           <p>
-            Every topic is sorted into one of twelve domains. Red-browns for
-            pressure and output, greens for growth, blues for contemplation,
-            greys for the quiet parts. The palette does half the work of the
-            insight.
+            Each topic is tagged work, money, family, body, and so on &mdash;
+            twelve categories in total. Color-coded, so at a glance you can
+            see if your week was mostly work or mostly not.
           </p>
         </div>
       </div>
@@ -837,11 +1011,12 @@
           <div class="label">Tones</div>
         </div>
         <div>
-          <h3 class="serif">One word for how the week felt.</h3>
+          <h3 class="serif">How the week felt, in a word.</h3>
           <p>
-            Each tile carries a tone read from your own language. <em>Open</em>,
-            <em>stuck</em>, <em>alive</em>, <em>waiting</em>, <em>warm</em>,
-            <em>unsettled</em>. You'll recognize them before you finish reading.
+            Each tile gets a single word read from your own language:
+            <em>open</em>, <em>stuck</em>, <em>alive</em>, <em>waiting</em>,
+            <em>warm</em>, <em>unsettled</em>. Usually accurate. Sometimes
+            uncomfortably so.
           </p>
         </div>
       </div>
@@ -873,7 +1048,7 @@
   <div class="wrap">
     <span class="section-label">How it works</span>
     <h2 class="section-title serif">
-      Three moves. <em>All of them local.</em>
+      Three steps. All of them on your Mac.
     </h2>
 
     <div class="rows" style="margin-top: 44px;">
@@ -883,11 +1058,11 @@
           <div class="label">Connect</div>
         </div>
         <div>
-          <h3 class="serif">Point it at your chats.</h3>
+          <h3 class="serif">Log in once, in a local window.</h3>
           <p>
-            A local browser connector walks through your Claude and ChatGPT
-            history the same way you would. No OAuth, no server on our side
-            &mdash; we don't have one.
+            Jurni opens a small browser on your Mac and you log into Claude,
+            ChatGPT, X, LinkedIn, Instagram, Facebook &mdash; whichever ones
+            you use. No OAuth through our servers. We don't have any.
           </p>
         </div>
       </div>
@@ -897,12 +1072,12 @@
           <div class="label">Process</div>
         </div>
         <div>
-          <h3 class="serif">Categorize with your own LLM key.</h3>
+          <h3 class="serif">Your AI key, on your machine.</h3>
           <p>
-            Each conversation is broken into moments. An LLM you provide
-            (OpenRouter, Anthropic, OpenAI) extracts topic, domain, people,
-            and tone. Results land in a SQLite file in
-            <code>~/.jurni/</code>. Nothing transits us.
+            Paste an OpenRouter, Anthropic, or OpenAI key the first time
+            you launch. Each conversation is broken up and analyzed with
+            your key, direct to the model. Results get written to a SQLite
+            file at <code>~/.jurni/</code>. We never see any of it.
           </p>
         </div>
       </div>
@@ -912,12 +1087,12 @@
           <div class="label">Read</div>
         </div>
         <div>
-          <h3 class="serif">Slide week by week.</h3>
+          <h3 class="serif">Slide the scrubber. Click a tile.</h3>
           <p>
-            The landscape redraws in place. Drill into a tile for the
-            specific threads behind it &mdash; the stories, the people named,
-            the tone reading. Quit the app and everything stays on your disk,
-            readable by any SQLite client.
+            Watch the picture redraw week by week. Click into a tile to see
+            the actual threads behind it, the people named, the tone. Quit
+            the app and everything stays on disk, in a plain SQLite file
+            you own.
           </p>
         </div>
       </div>
@@ -929,12 +1104,12 @@
 <section id="privacy" style="padding-top: 0;">
   <div class="wrap">
     <div class="privacy reveal">
-      <span class="section-label">Privacy &mdash; the actual commitment</span>
+      <span class="section-label">Privacy</span>
       <blockquote class="serif">
-        No cloud. No account. No telemetry. Your <em>key</em>, your <em>machine</em>, your <em>data.</em>
+        No cloud. No account. No telemetry. Your key, your machine, your data.
       </blockquote>
       <div class="meta">
-        Single SQLite file at ~/.jurni/ &middot; back it up with Time Machine &middot; delete and it's gone
+        One SQLite file at ~/.jurni/. Back it up with Time Machine. Delete it and Jurni is gone.
       </div>
     </div>
   </div>
@@ -943,12 +1118,11 @@
 <!-- ========================= DOWNLOAD ========================= -->
 <section id="download" style="padding: 40px 0;">
   <div class="download reveal">
-    <h2 class="serif">Read back your year, <em>on your machine.</em></h2>
+    <h2 class="serif">Try it now. It's free.</h2>
     <p>
-      Free, open source, runs entirely locally. The build is signed and
-      notarized by Apple &mdash; double-click and it opens, no Gatekeeper
-      warning, no right-click trick. Future versions install silently in
-      the background.
+      Open source, runs entirely on your Mac. Signed and notarized by
+      Apple, so it just opens &mdash; no Gatekeeper warning, no right-click
+      trick. Updates install silently from here on.
     </p>
     <div class="cta-row">
       <a href="https://github.com/abehairy/jurni-os/releases/download/v0.1.1/Jurni-0.1.1-arm64.dmg" class="btn btn-primary">
@@ -980,8 +1154,8 @@
           <span style="font-size: 17px;">Jurni</span>
         </div>
         <p style="color: var(--text-muted); max-width: 34ch; font-size: 14px;">
-          A mirror for the life you've been living in your chats. Built slowly,
-          in the open, by people who'd rather read their own year than hand it over.
+          Read back your year, from your own chats. Local-first, open source,
+          built in public.
         </p>
       </div>
       <div class="footer-col">
