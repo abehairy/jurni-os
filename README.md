@@ -56,11 +56,11 @@ Download the latest `.dmg` from the [Releases
 page](https://github.com/abehairy/jurni-os/releases/latest) and drag
 Jurni into **Applications**.
 
-**Alpha note — first launch on an unsigned build:** right-click
-(or Ctrl-click) `Jurni.app` → **Open** → **Open** again in the dialog.
-macOS only asks once per machine. (Once we have a full Apple Developer
-Program membership active, v0.1.1 will be signed + notarized + auto-updating
-and this step goes away.)
+Signed and notarized by Apple — double-click to open, no warnings.
+Auto-updates are enabled; future versions install silently in the background.
+
+> **Apple Silicon only for now.** Intel Mac builds are coming in a
+> follow-up release.
 
 > You'll need an [OpenRouter](https://openrouter.ai) API key (or
 > equivalent LLM key) the first time you run it. Jurni stores it locally

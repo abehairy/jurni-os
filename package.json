@@ -1,6 +1,6 @@
 {
   "name": "jurni",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A dashboard for your life. Local-first, AI-powered, open source.",
   "author": {
     "name": "Everest Minds for Programming",
@@ -68,13 +68,30 @@
     "artifactName": "Jurni-${version}-${arch}.${ext}",
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] },
-        { "target": "zip", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "category": "public.app-category.lifestyle",
       "icon": "electron/assets/icon.icns",
-      "identity": null,
-      "gatekeeperAssess": false
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "electron/assets/entitlements.mac.plist",
+      "entitlementsInherit": "electron/assets/entitlements.mac.plist",
+      "notarize": {
+        "teamId": "U2EBW657CK"
+      }
     },
     "dmg": {
       "sign": false

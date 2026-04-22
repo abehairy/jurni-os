@@ -7,9 +7,13 @@ Versioning: [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [0.1.1] — signed + notarized alpha
+
 ### Added
+- First signed + notarized release on the public `jurni-os` repo.
+  Apple Developer ID: `EVEREST MINDS FOR PROGRAMMING S.A.E (U2EBW657CK)`.
 - Auto-update via `electron-updater` with signed + notarized macOS builds
-  (arm64 + x64). See [RELEASE.md](./RELEASE.md).
+  (arm64). x64 follows in 0.1.2. See [RELEASE.md](./RELEASE.md).
 - `UpdateBanner` component — in-app toast for "update ready, restart to install".
 - `kind` column on moments (`dialogue` | `post`) — drives pipeline routing.
 - `processing/kinds.js` — single-source-of-truth lookup table (KIND_PROFILES)
@@ -36,6 +40,10 @@ Versioning: [Semantic Versioning](https://semver.org).
 - Social posts (X, LinkedIn, Facebook, Instagram) no longer corrupt the
   Life Landscape with bogus "X Feed" thread labels.
 - Stale thread labels on previously-ingested social posts wiped on migration.
+
+### Known issues
+- Intel Mac (x64) build deferred to 0.1.2 — ran out of disk headroom mid-build.
+  Apple Silicon only for now.
 
 ## [0.1.0] — initial alpha
 
