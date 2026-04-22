@@ -1,7 +1,30 @@
 {
   "name": "jurni",
   "version": "0.1.0",
-  "description": "A dashboard for your life.",
+  "description": "A dashboard for your life. Local-first, AI-powered, open source.",
+  "author": {
+    "name": "Everest Minds for Programming",
+    "email": "behairy@everestminds.com"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/everestminds/jurni",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/everestminds/jurni.git"
+  },
+  "bugs": {
+    "url": "https://github.com/everestminds/jurni/issues"
+  },
+  "keywords": [
+    "personal-dashboard",
+    "life-tracking",
+    "local-first",
+    "electron",
+    "ai",
+    "llm",
+    "journaling",
+    "self-quantification"
+  ],
   "main": "electron/main.js",
   "scripts": {
     "postinstall": "electron-builder install-app-deps",
@@ -55,7 +78,7 @@
       "entitlements": "electron/assets/entitlements.mac.plist",
       "entitlementsInherit": "electron/assets/entitlements.mac.plist",
       "notarize": {
-        "teamId": "${env.APPLE_TEAM_ID}"
+        "teamId": "U2EBW657CK"
       }
     },
     "dmg": {
@@ -63,8 +86,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "behairy",
-      "repo": "jurni-nuclear",
+      "owner": "everestminds",
+      "repo": "jurni",
       "releaseType": "release"
     },
     "files": [

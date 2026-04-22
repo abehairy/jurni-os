@@ -4,27 +4,40 @@ How to ship a new version of Jurni with auto-update working.
 
 ## One-time setup (do once, then never again)
 
-### 1. Apple Developer account prerequisites
+### 1. Apple Developer account (already configured)
 
-You need all of these before your first release:
+Current signing identity — baked into `package.json`:
 
-- [ ] **Apple Developer membership** — $99/year at <https://developer.apple.com>
+- **Team ID**: `U2EBW657CK`
+- **Entity**: Everest Minds for Programming S.A.E
+- **Apple ID**: `behairy@everestminds.com`
+
+Before your first release, confirm:
+
+- [x] Apple Developer membership active (renews Dec 5, 2026)
 - [ ] **Developer ID Application certificate** in your Keychain. To verify:
   - Open Keychain Access → login → search `Developer ID Application`
-  - You should see: `Developer ID Application: <Your Name> (TEAMID)`
+  - You should see: `Developer ID Application: Everest Minds for Programming S.A.E (U2EBW657CK)`
   - If missing: Xcode → Settings → Accounts → your team → Manage Certificates → + → `Developer ID Application`
 - [ ] **App-specific password** for notarization:
   - Go to <https://account.apple.com> → Sign-In & Security → App-Specific Passwords
   - Generate one called "Jurni notarization"
-  - Copy and save it somewhere safe (you can't view it again)
-- [ ] **Apple Team ID** (10-char alphanumeric) from <https://developer.apple.com/account> → Membership Details
+  - Copy into `.env` as `APPLE_APP_SPECIFIC_PASSWORD`
 
 ### 2. GitHub setup
 
-- [ ] Create a GitHub repo at `behairy/jurni-nuclear` (or change `publish.owner` / `publish.repo` in `package.json` to match your actual repo)
-- [ ] `git remote add origin git@github.com:<owner>/<repo>.git`
+Publish target — baked into `package.json`:
+
+- **Owner**: `everestminds`
+- **Repo**: `jurni`
+
+Before your first release:
+
+- [ ] Create the `everestminds` organization on GitHub (if not already)
+- [ ] Create repo `everestminds/jurni` (start it empty; we'll push from here)
+- [ ] `git remote add origin git@github.com:everestminds/jurni.git`
 - [ ] `git push -u origin main`
-- [ ] Create a **Personal Access Token** with `repo` scope (private repos) or `public_repo` (public) at <https://github.com/settings/tokens>
+- [ ] Create a **Personal Access Token** (classic) with `repo` scope at <https://github.com/settings/tokens>, save as `GH_TOKEN` in `.env`
 
 ### 3. Local `.env`
 
