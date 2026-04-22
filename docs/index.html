@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Jurni — A dashboard for your life</title>
-<meta name="description" content="Local-first, AI-powered, open-source personal dashboard for macOS. Your conversations, social posts, calendar and photos — woven into one living picture of your life. Your data never leaves your machine." />
+<title>Jurni — a mirror for the life you've been living in your chats</title>
+<meta name="description" content="Jurni reads your Claude and ChatGPT history and shows you the landscape of what's actually mattered — week by week, topic by topic. Local-first, open source, macOS." />
 
-<meta property="og:title" content="Jurni — A dashboard for your life" />
-<meta property="og:description" content="A local, open-source dashboard that reads across your Claude, ChatGPT, X, LinkedIn, calendar and photos, and surfaces what actually matters." />
+<meta property="og:title" content="Jurni — a mirror for the life you've been living in your chats" />
+<meta property="og:description" content="Local-first, open-source landscape of what you've actually been living in. Your key, your machine, your data." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://abehairy.github.io/jurni-os" />
 <meta property="og:image" content="https://abehairy.github.io/jurni-os/logo.png" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="theme-color" content="#F2EEE3" />
+<meta name="theme-color" content="#F0EEE5" />
 
 <link rel="icon" type="image/png" href="logo.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -20,37 +20,57 @@
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
 <style>
+  /* ======================================================================
+     Design tokens — pulled 1:1 from the app's own theme (src/index.css),
+     so the site reads as a continuation of Jurni, not a brochure about it.
+     ====================================================================== */
   :root {
-    /* Warm paper palette — inspired by fine print and journal paper */
-    --paper: #F2EEE3;
-    --paper-elev: #EDE8DB;
-    --paper-deep: #E7E1D1;
-    --ink: #1B1B17;
-    --ink-muted: #55524A;
-    --ink-faint: #8A8678;
-    --rule: rgba(27, 27, 23, 0.12);
-    --rule-strong: rgba(27, 27, 23, 0.22);
-    --accent: #B84C26;           /* terracotta */
-    --accent-deep: #8F3818;
-    --accent-tint: rgba(184, 76, 38, 0.08);
-    --max: 1120px;
+    --shell: #F0EEE5;
+    --surface: #F5F4EE;
+    --surface-alt: #E9E6DA;
+    --text: #1F1E1B;
+    --text-muted: #6F6B60;
+    --text-faint: rgba(111, 107, 96, 0.7);
+    --border: #E1DDD1;
+    --border-strong: #CFC9B8;
+    --accent: #D97757;          /* Claude terracotta — same token as the app */
+    --accent-soft: rgba(217, 119, 87, 0.10);
+    --accent-strong: #B65A3E;
+
+    /* In-landscape palette — copied from src/lib/landscape-theme.js so the
+       mock reads as a real screenshot of the product, not an invention. */
+    --cat-work:   #6B2818;
+    --cat-money:  #5C3F10;
+    --cat-craft:  #2A4228;
+    --cat-love:   #2C1F36;
+    --cat-family: #3E2A1C;
+    --cat-peers:  #342C18;
+    --cat-faith:  #1C2A3E;
+    --cat-body:   #343A1C;
+    --cat-mind:   #3E2D1C;
+    --cat-public: #34202E;
+    --cat-hearth: #34271C;
+    --cat-grief:  #2A2128;
+
+    --radius-sm: 8px;
     --radius: 14px;
+    --radius-lg: 20px;
+    --max: 1120px;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-    background: var(--paper);
-    color: var(--ink);
+    background: var(--shell);
+    color: var(--text);
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-feature-settings: 'ss01', 'cv11';
+    overflow-x: hidden;
   }
-
-  ::selection { background: var(--ink); color: var(--paper); }
-
+  ::selection { background: var(--text); color: var(--shell); }
   a { color: inherit; text-decoration: none; }
 
   .serif {
@@ -60,493 +80,503 @@
   }
   .mono {
     font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
-    font-size: 13px;
+    font-size: 12.5px;
   }
 
-  /* ======================= Layout helpers ======================= */
   .wrap { max-width: var(--max); margin: 0 auto; padding: 0 28px; }
-  .rule { height: 1px; background: var(--rule); width: 100%; }
 
-  /* ======================= Nav ======================= */
+  /* ======================================================================
+     Nav
+     ====================================================================== */
   nav {
     position: sticky; top: 0; z-index: 50;
-    backdrop-filter: saturate(180%) blur(12px);
-    -webkit-backdrop-filter: saturate(180%) blur(12px);
-    background: rgba(242, 238, 227, 0.82);
-    border-bottom: 1px solid var(--rule);
+    backdrop-filter: saturate(140%) blur(14px);
+    -webkit-backdrop-filter: saturate(140%) blur(14px);
+    background: rgba(240, 238, 229, 0.78);
+    border-bottom: 1px solid var(--border);
   }
   .nav-inner {
-    max-width: var(--max);
-    margin: 0 auto;
+    max-width: var(--max); margin: 0 auto;
     padding: 14px 28px;
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
   }
   .brand {
     display: flex; align-items: center; gap: 10px;
     font-weight: 500; font-size: 15px; letter-spacing: -0.01em;
   }
   .brand-dot {
-    width: 22px; height: 22px; border-radius: 50%;
-    background: radial-gradient(circle at 30% 30%, var(--accent) 0%, var(--accent-deep) 55%, #3b1a08 100%);
-    box-shadow: 0 0 0 3px var(--paper), 0 0 0 4px var(--rule);
+    width: 18px; height: 18px; border-radius: 50%;
+    background: radial-gradient(circle at 28% 28%, #E89E7A 0%, var(--accent) 45%, var(--accent-strong) 100%);
   }
   .nav-links {
-    display: flex; gap: 26px; font-size: 14px; color: var(--ink-muted);
-    align-items: center;
+    display: flex; gap: 26px; align-items: center;
+    font-size: 14px; color: var(--text-muted);
   }
-  .nav-links a:hover { color: var(--ink); }
+  .nav-links a:hover { color: var(--text); }
   .nav-cta {
-    font-weight: 500; color: var(--ink);
-    border: 1px solid var(--rule-strong);
+    font-weight: 500; color: var(--text);
+    border: 1px solid var(--border-strong);
     padding: 7px 14px; border-radius: 999px;
-    background: transparent; transition: all 0.15s ease;
+    transition: all 0.18s ease;
   }
-  .nav-cta:hover { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .nav-cta:hover { background: var(--text); color: var(--shell); border-color: var(--text); }
   @media (max-width: 720px) {
-    .nav-links a:not(.nav-cta):not(.brand) { display: none; }
+    .nav-links a:not(.nav-cta) { display: none; }
   }
 
-  /* ======================= Hero ======================= */
-  .hero {
-    padding: 120px 0 96px;
-    position: relative;
-    overflow: hidden;
-  }
-  .hero-inner { position: relative; }
-  .eyebrow {
-    display: inline-flex; align-items: center; gap: 10px;
-    font-size: 13px; color: var(--ink-muted);
-    padding: 6px 14px;
-    border: 1px solid var(--rule-strong);
-    border-radius: 999px;
-    background: rgba(255,255,255,0.3);
-    margin-bottom: 32px;
-  }
-  .eyebrow .pulse {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 0 0 rgba(184, 76, 38, 0.6);
-    animation: pulse 2.4s ease-out infinite;
-  }
-  @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(184, 76, 38, 0.5); }
-    100% { box-shadow: 0 0 0 10px rgba(184, 76, 38, 0); }
-  }
-  h1.hero-title {
-    font-family: 'Instrument Serif', Georgia, serif;
-    font-weight: 400;
-    font-size: clamp(48px, 8vw, 104px);
-    line-height: 0.96;
-    letter-spacing: -0.025em;
-    color: var(--ink);
-    max-width: 14ch;
-  }
-  h1.hero-title em {
-    font-style: italic;
-    color: var(--accent-deep);
-  }
-  .hero-lede {
-    margin-top: 32px;
-    font-size: clamp(18px, 2vw, 21px);
-    line-height: 1.5;
-    max-width: 58ch;
-    color: var(--ink-muted);
-  }
-  .hero-cta {
-    margin-top: 44px;
-    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-  }
+  /* ======================================================================
+     Buttons
+     ====================================================================== */
   .btn {
-    display: inline-flex; align-items: center; gap: 10px;
-    padding: 14px 24px;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 20px;
     border-radius: 999px;
-    font-size: 15px; font-weight: 500;
-    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease;
+    font-size: 14.5px; font-weight: 500;
+    transition: transform 0.15s ease, box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease;
     white-space: nowrap;
   }
   .btn-primary {
-    background: var(--ink);
-    color: var(--paper);
-    box-shadow: 0 2px 0 rgba(0,0,0,0.06);
+    background: var(--text); color: var(--shell);
   }
   .btn-primary:hover {
     transform: translateY(-1px);
-    box-shadow: 0 6px 18px rgba(27,27,23,0.18);
+    box-shadow: 0 8px 22px rgba(31, 30, 27, 0.18);
   }
   .btn-ghost {
-    color: var(--ink);
-    border: 1px solid var(--rule-strong);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
     background: transparent;
   }
-  .btn-ghost:hover { border-color: var(--ink); }
-  .hero-meta {
-    margin-top: 22px;
-    font-size: 13px; color: var(--ink-faint);
-    display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
-  }
-  .hero-meta .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--ink-faint); }
+  .btn-ghost:hover { border-color: var(--text); }
+  .btn svg { width: 14px; height: 14px; }
 
-  /* Soft paper texture on hero */
-  .hero::before {
-    content: "";
-    position: absolute; inset: 0;
-    background-image:
-      radial-gradient(1200px 420px at 80% -10%, rgba(184,76,38,0.08), transparent 60%),
-      radial-gradient(800px 400px at -10% 90%, rgba(143,56,24,0.06), transparent 60%);
-    pointer-events: none;
-    z-index: 0;
-  }
-  .hero-inner { z-index: 1; }
-
-  /* ======================= Showcase mock ======================= */
-  .showcase {
-    padding: 40px 0 120px;
+  /* ======================================================================
+     Hero
+     ====================================================================== */
+  .hero {
+    padding: 96px 0 48px;
     position: relative;
   }
-  .mock-frame {
-    background: linear-gradient(180deg, #17171A 0%, #0E0E10 100%);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 18px;
-    padding: 0;
-    box-shadow:
-      0 30px 60px -20px rgba(27,27,23,0.35),
-      0 10px 30px -10px rgba(27,27,23,0.18);
-    overflow: hidden;
-    transform: translateY(0);
-    transition: transform 0.6s ease;
+  .hero .eyebrow {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 5px 12px 5px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--surface);
+    font-size: 12.5px; color: var(--text-muted);
+    margin-bottom: 28px;
   }
-  .mock-frame:hover { transform: translateY(-4px); }
-  .mock-chrome {
-    display: flex; align-items: center; gap: 8px;
-    padding: 14px 18px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+  .eyebrow-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(217, 119, 87, 0.55);
+    animation: pulse 2.4s ease-out infinite;
   }
-  .mock-chrome span {
-    width: 11px; height: 11px; border-radius: 50%;
-    background: rgba(255,255,255,0.12);
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(217,119,87,0.45); }
+    100% { box-shadow: 0 0 0 8px rgba(217,119,87,0); }
   }
-  .mock-chrome span:nth-child(1) { background: #ff5f56; }
-  .mock-chrome span:nth-child(2) { background: #ffbd2e; }
-  .mock-chrome span:nth-child(3) { background: #27c93f; }
-  .mock-chrome .mock-url {
-    margin-left: 12px; color: rgba(255,255,255,0.4); font-size: 12px;
+
+  h1.hero-title {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-weight: 400;
+    font-size: clamp(44px, 7.6vw, 94px);
+    line-height: 0.98;
+    letter-spacing: -0.022em;
+    max-width: 16ch;
+  }
+  h1.hero-title em {
+    font-style: italic;
+    color: var(--accent-strong);
+  }
+
+  .hero-lede {
+    margin-top: 28px;
+    font-size: clamp(17px, 1.6vw, 19px);
+    line-height: 1.55;
+    max-width: 54ch;
+    color: var(--text-muted);
+  }
+  .hero-lede strong { color: var(--text); font-weight: 500; }
+
+  .hero-cta {
+    margin-top: 36px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .hero-meta {
+    margin-top: 18px;
+    font-size: 12.5px; color: var(--text-faint);
+    display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
     font-family: 'JetBrains Mono', monospace;
   }
-  .mock-body {
-    display: grid;
-    grid-template-columns: 200px 1fr;
-    min-height: 440px;
+  .hero-meta .sep { opacity: 0.5; }
+  .hero-meta .ok { color: var(--accent-strong); }
+
+  /* ======================================================================
+     The mock — an honest rendering of Life Landscape, not an invention.
+     Uses the real category gradients from src/lib/landscape-theme.js.
+     ====================================================================== */
+  .mock-wrap { padding: 40px 0 120px; }
+
+  .mock-frame {
+    background: #17110B;        /* Jurni dark shell */
+    color: #F5EBD8;
+    border: 1px solid rgba(0,0,0,0.12);
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow:
+      0 40px 80px -30px rgba(31, 30, 27, 0.28),
+      0 14px 36px -12px rgba(31, 30, 27, 0.18);
   }
-  .mock-sidebar {
-    padding: 18px;
-    border-right: 1px solid rgba(255,255,255,0.05);
-    display: flex; flex-direction: column; gap: 18px;
+  .mock-chrome {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px;
+    background: #1F1610;
+    border-bottom: 1px solid rgba(245, 235, 216, 0.06);
   }
-  .mock-side-item {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 10px; border-radius: 8px;
-    color: rgba(255,255,255,0.55); font-size: 13px;
+  .mock-chrome .dot { width: 11px; height: 11px; border-radius: 50%; background: rgba(255,255,255,0.1); }
+  .mock-chrome .dot:nth-child(1) { background: #ff5f56; }
+  .mock-chrome .dot:nth-child(2) { background: #ffbd2e; }
+  .mock-chrome .dot:nth-child(3) { background: #27c93f; }
+  .mock-chrome .path {
+    margin-left: 14px;
+    color: rgba(245,235,216,0.4); font-family: 'JetBrains Mono', monospace; font-size: 12px;
   }
-  .mock-side-item.active { background: rgba(255,255,255,0.05); color: #fff; }
-  .mock-side-item .bullet { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.6; }
-  .mock-content {
-    padding: 28px 32px;
-    display: flex; flex-direction: column; gap: 22px;
+
+  .mock-topbar {
+    padding: 18px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid rgba(245, 235, 216, 0.05);
+    gap: 16px; flex-wrap: wrap;
   }
-  .mock-h {
-    color: #fff;
+  .mock-caption .t {
     font-family: 'Instrument Serif', serif;
-    font-size: 24px; letter-spacing: -0.01em;
+    font-size: 22px; color: #F5EBD8; letter-spacing: -0.01em;
   }
-  .mock-sub { color: rgba(255,255,255,0.45); font-size: 13px; }
+  .mock-caption .t em { color: #E89B6A; font-style: italic; }
+  .mock-caption .s { font-size: 12px; color: #A89A82; margin-top: 4px; }
+
+  .mock-chips {
+    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  }
+  .chip-dark {
+    font-size: 11.5px; padding: 5px 10px; border-radius: 999px;
+    background: rgba(245,235,216,0.05);
+    border: 1px solid rgba(245,235,216,0.08);
+    color: #C9BCA0;
+  }
+  .chip-dark.active { background: rgba(232,155,106,0.12); border-color: rgba(232,155,106,0.35); color: #F2B58C; }
+
+  /* ---- the treemap ---- */
   .mock-grid {
-    display: grid; grid-template-columns: repeat(12, 1fr);
-    gap: 10px; margin-top: 6px;
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    grid-auto-rows: 80px;
+    gap: 4px;
+    padding: 14px;
+    background: #17110B;
   }
   .tile {
-    border-radius: 8px;
-    min-height: 58px;
-    background: linear-gradient(135deg, rgba(184,76,38,0.55), rgba(184,76,38,0.15));
-    border: 1px solid rgba(184,76,38,0.15);
-    padding: 10px 12px;
-    font-size: 11px; color: rgba(255,255,255,0.9);
-    display: flex; align-items: flex-end;
+    padding: 14px 16px;
+    border-radius: 10px;
+    color: #F5EBD8;
+    display: flex; flex-direction: column; justify-content: space-between;
+    position: relative; overflow: hidden;
+    border: 1px solid rgba(0,0,0,0.25);
   }
-  .tile.s2 { grid-column: span 2; }
-  .tile.s3 { grid-column: span 3; }
-  .tile.s4 { grid-column: span 4; }
-  .tile.s5 { grid-column: span 5; }
-  .tile.s6 { grid-column: span 6; }
-  .tile.v2 { background: linear-gradient(135deg, rgba(120, 110, 96, 0.6), rgba(120, 110, 96, 0.18)); border-color: rgba(120,110,96,0.2); }
-  .tile.v3 { background: linear-gradient(135deg, rgba(78, 95, 109, 0.55), rgba(78, 95, 109, 0.16)); border-color: rgba(78,95,109,0.2); }
-  .tile.v4 { background: linear-gradient(135deg, rgba(98, 80, 112, 0.55), rgba(98, 80, 112, 0.16)); border-color: rgba(98,80,112,0.2); }
-  .tile.v5 { background: linear-gradient(135deg, rgba(90, 112, 80, 0.55), rgba(90, 112, 80, 0.16)); border-color: rgba(90,112,80,0.2); }
+  .tile .topic {
+    font-family: 'Instrument Serif', serif;
+    font-size: 18px; letter-spacing: -0.005em;
+  }
+  .tile .meta {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 11px; font-family: 'JetBrains Mono', monospace;
+    color: rgba(245,235,216,0.72);
+    gap: 8px;
+  }
+  .tile .cat { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.7; }
+  .tile .change { display: inline-flex; align-items: center; gap: 4px; }
+  .tile .change.up   { color: #A8D4A0; }
+  .tile .change.down { color: #E89B6A; }
+  .tile .tone { font-style: italic; color: rgba(245,235,216,0.55); font-family: 'Instrument Serif', serif; font-size: 13px; }
+  .tile svg.spark { opacity: 0.8; }
 
-  .mock-row {
-    display: flex; gap: 14px; align-items: flex-start;
-  }
-  .chip {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 6px 11px; border-radius: 999px;
-    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.06);
-    color: rgba(255,255,255,0.75); font-size: 11px;
-  }
-  .chip .d { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-  .chip.accent { background: rgba(184,76,38,0.12); border-color: rgba(184,76,38,0.3); color: #f0a889; }
+  /* Real category gradients, verbatim from the app */
+  .cat-work   { background: linear-gradient(135deg, #8A3822 0%, #6B2818 100%); }
+  .cat-money  { background: linear-gradient(135deg, #7A5618 0%, #5C3F10 100%); }
+  .cat-craft  { background: linear-gradient(135deg, #3A5A3A 0%, #2A4228 100%); }
+  .cat-love   { background: linear-gradient(135deg, #3E2A4A 0%, #2C1F36 100%); }
+  .cat-family { background: linear-gradient(135deg, #5A3E28 0%, #3E2A1C 100%); }
+  .cat-peers  { background: linear-gradient(135deg, #4A4028 0%, #342C18 100%); }
+  .cat-faith  { background: linear-gradient(135deg, #2A3E5A 0%, #1C2A3E 100%); }
+  .cat-body   { background: linear-gradient(135deg, #4A5228 0%, #343A1C 100%); }
+  .cat-mind   { background: linear-gradient(135deg, #5A4228 0%, #3E2D1C 100%); }
+  .cat-public { background: linear-gradient(135deg, #4A3040 0%, #34202E 100%); }
+  .cat-hearth { background: linear-gradient(135deg, #4A3828 0%, #34271C 100%); }
+  .cat-grief  { background: linear-gradient(135deg, #3A2F38 0%, #2A2128 100%); }
 
-  @media (max-width: 680px) {
-    .mock-body { grid-template-columns: 1fr; }
-    .mock-sidebar { display: none; }
-    .mock-grid .tile.s5, .mock-grid .tile.s6 { grid-column: span 6; }
-    .mock-grid .tile.s3, .mock-grid .tile.s4 { grid-column: span 12; }
+  /* span helpers for the grid */
+  .s2 { grid-column: span 2; } .s3 { grid-column: span 3; }
+  .s4 { grid-column: span 4; } .s5 { grid-column: span 5; }
+  .s6 { grid-column: span 6; } .s8 { grid-column: span 8; }
+  .r2 { grid-row: span 2; }
+
+  .mock-scrubber {
+    padding: 14px 22px 20px;
+    display: flex; align-items: center; gap: 16px;
+    border-top: 1px solid rgba(245, 235, 216, 0.06);
+    font-size: 12px; color: #A89A82; font-family: 'JetBrains Mono', monospace;
+  }
+  .track { flex: 1; height: 3px; background: rgba(245,235,216,0.08); border-radius: 3px; position: relative; }
+  .track .knob {
+    position: absolute; top: 50%; left: 72%;
+    transform: translate(-50%, -50%);
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent); border: 2px solid #17110B;
+  }
+  .track .fill {
+    position: absolute; top: 0; left: 0; height: 100%;
+    width: 72%; background: var(--accent-strong); border-radius: 3px;
   }
 
-  /* ======================= Sections ======================= */
+  @media (max-width: 780px) {
+    .mock-grid { grid-auto-rows: 64px; }
+    .tile .topic { font-size: 15px; }
+    .s8 { grid-column: span 12; }
+    .s6 { grid-column: span 12; }
+    .s5 { grid-column: span 6; }
+    .s4 { grid-column: span 6; }
+    .s3 { grid-column: span 6; }
+  }
+
+  /* ======================================================================
+     Sections
+     ====================================================================== */
   section { padding: 110px 0; }
   .section-label {
-    font-size: 13px; color: var(--ink-faint);
-    text-transform: uppercase; letter-spacing: 0.12em;
+    font-size: 12px; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.14em;
+    font-family: 'JetBrains Mono', monospace;
     margin-bottom: 22px;
     display: inline-block;
   }
   h2.section-title {
     font-family: 'Instrument Serif', Georgia, serif;
-    font-size: clamp(36px, 5vw, 56px);
+    font-size: clamp(34px, 5vw, 54px);
     line-height: 1.06;
     letter-spacing: -0.02em;
-    color: var(--ink);
-    max-width: 22ch;
+    max-width: 20ch;
   }
-  h2.section-title em { font-style: italic; color: var(--accent-deep); }
+  h2.section-title em { font-style: italic; color: var(--accent-strong); }
   p.section-lede {
     margin-top: 22px;
-    font-size: 18px; line-height: 1.55;
-    color: var(--ink-muted);
-    max-width: 62ch;
+    font-size: 17.5px; line-height: 1.6;
+    color: var(--text-muted);
+    max-width: 60ch;
   }
 
-  /* ======================= Problem section ======================= */
-  .problem-grid {
+  /* ======================================================================
+     "What you're actually looking at" — 3 specific, grounded rows.
+     ====================================================================== */
+  .rows { margin-top: 48px; border-top: 1px solid var(--border); }
+  .row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 64px;
-    margin-top: 64px;
+    grid-template-columns: 140px 1fr 1.15fr;
+    gap: 44px;
+    padding: 32px 0;
+    border-bottom: 1px solid var(--border);
     align-items: flex-start;
   }
-  .problem-card {
-    padding: 0;
-  }
-  .problem-card h3 {
+  .row .num {
     font-family: 'Instrument Serif', serif;
-    font-size: 28px; font-weight: 400;
-    letter-spacing: -0.01em;
-    margin-bottom: 14px;
+    font-size: 46px; font-style: italic;
+    color: var(--accent-strong);
+    line-height: 0.9;
   }
-  .problem-card p {
-    color: var(--ink-muted); font-size: 16px; line-height: 1.6;
+  .row .label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.12em;
+    margin-top: 14px;
   }
-  @media (max-width: 760px) {
-    .problem-grid { grid-template-columns: 1fr; gap: 36px; }
-  }
-
-  /* ======================= Features (pillars) ======================= */
-  .pillars {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 2px;
-    margin-top: 56px;
-    background: var(--rule);
-    border: 1px solid var(--rule);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-  .pillar {
-    padding: 36px 32px;
-    background: var(--paper);
-    display: flex; flex-direction: column; gap: 12px;
-  }
-  .pillar:hover { background: var(--paper-elev); }
-  .pillar-icon {
-    width: 40px; height: 40px; border-radius: 10px;
-    display: grid; place-items: center;
-    background: var(--paper-deep);
-    border: 1px solid var(--rule);
-    color: var(--accent-deep);
-    margin-bottom: 6px;
-  }
-  .pillar h3 {
-    font-family: 'Instrument Serif', serif;
-    font-size: 22px; font-weight: 400; letter-spacing: -0.01em;
-  }
-  .pillar p { color: var(--ink-muted); font-size: 15px; }
-  @media (max-width: 820px) {
-    .pillars { grid-template-columns: 1fr; }
-  }
-
-  /* ======================= Flow / How it works ======================= */
-  .flow {
-    margin-top: 64px;
-    border-top: 1px solid var(--rule);
-  }
-  .flow-row {
-    display: grid;
-    grid-template-columns: 120px 1fr 1fr;
-    gap: 40px;
-    padding: 36px 0;
-    border-bottom: 1px solid var(--rule);
-    align-items: flex-start;
-  }
-  .flow-num {
-    font-family: 'Instrument Serif', serif;
-    font-size: 48px; font-style: italic;
-    color: var(--accent-deep);
-    line-height: 1;
-  }
-  .flow-title {
+  .row h3 {
     font-family: 'Instrument Serif', serif;
     font-size: 26px; font-weight: 400; letter-spacing: -0.01em;
+    line-height: 1.15;
   }
-  .flow-body { color: var(--ink-muted); font-size: 16px; line-height: 1.6; }
-  @media (max-width: 760px) {
-    .flow-row { grid-template-columns: 60px 1fr; }
-    .flow-row .flow-body { grid-column: 1 / -1; }
+  .row p { color: var(--text-muted); font-size: 16px; line-height: 1.6; max-width: 44ch; }
+  .row code {
+    background: var(--surface-alt);
+    padding: 1px 6px; border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  }
+  @media (max-width: 780px) {
+    .row { grid-template-columns: 60px 1fr; }
+    .row p { grid-column: 1 / -1; }
   }
 
-  /* ======================= Privacy quote ======================= */
-  .quote-block {
-    margin-top: 64px;
-    padding: 72px 0;
-    border-top: 1px solid var(--rule);
-    border-bottom: 1px solid var(--rule);
+  /* ======================================================================
+     Domains strip — show the actual 12 domains, with the real colors.
+     ====================================================================== */
+  .domains {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+    margin-top: 48px;
   }
-  blockquote {
+  .domain {
+    padding: 18px 14px;
+    border-radius: var(--radius-sm);
+    color: #F5EBD8;
     font-family: 'Instrument Serif', serif;
-    font-size: clamp(28px, 3.6vw, 44px);
-    line-height: 1.2; letter-spacing: -0.01em;
-    max-width: 24ch;
+    font-size: 17px;
+    text-align: center;
+    letter-spacing: -0.005em;
+    transition: transform 0.2s ease;
   }
-  blockquote em { font-style: italic; color: var(--accent-deep); }
-  .quote-meta {
-    margin-top: 22px;
-    font-size: 13px; color: var(--ink-faint);
-    font-family: 'JetBrains Mono', monospace;
+  .domain:hover { transform: translateY(-2px); }
+  .d-work   { background: linear-gradient(135deg, #8A3822 0%, #6B2818 100%); }
+  .d-money  { background: linear-gradient(135deg, #7A5618 0%, #5C3F10 100%); }
+  .d-craft  { background: linear-gradient(135deg, #3A5A3A 0%, #2A4228 100%); }
+  .d-love   { background: linear-gradient(135deg, #3E2A4A 0%, #2C1F36 100%); }
+  .d-family { background: linear-gradient(135deg, #5A3E28 0%, #3E2A1C 100%); }
+  .d-peers  { background: linear-gradient(135deg, #4A4028 0%, #342C18 100%); }
+  .d-faith  { background: linear-gradient(135deg, #2A3E5A 0%, #1C2A3E 100%); }
+  .d-body   { background: linear-gradient(135deg, #4A5228 0%, #343A1C 100%); }
+  .d-mind   { background: linear-gradient(135deg, #5A4228 0%, #3E2D1C 100%); }
+  .d-public { background: linear-gradient(135deg, #4A3040 0%, #34202E 100%); }
+  .d-hearth { background: linear-gradient(135deg, #4A3828 0%, #34271C 100%); }
+  .d-grief  { background: linear-gradient(135deg, #3A2F38 0%, #2A2128 100%); }
+  @media (max-width: 780px) {
+    .domains { grid-template-columns: repeat(3, 1fr); }
   }
 
-  /* ======================= Tech bar ======================= */
-  .tech {
-    display: flex; flex-wrap: wrap; gap: 10px;
+  /* ======================================================================
+     Privacy block — short, sharp, specific.
+     ====================================================================== */
+  .privacy {
     margin-top: 32px;
+    padding: 56px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
   }
-  .tech .chip-light {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 6px 12px; border-radius: 999px;
-    border: 1px solid var(--rule-strong);
+  .privacy blockquote {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(28px, 3.6vw, 42px);
+    line-height: 1.18; letter-spacing: -0.012em;
+    max-width: 26ch;
+  }
+  .privacy blockquote em { font-style: italic; color: var(--accent-strong); }
+  .privacy .meta {
+    margin-top: 20px;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 12px; color: var(--ink-muted);
-    background: rgba(255,255,255,0.3);
+    font-size: 12px; color: var(--text-faint); letter-spacing: 0.1em;
+    text-transform: uppercase;
   }
 
-  /* ======================= Download band ======================= */
-  .download-band {
-    margin: 0 28px;
+  /* ======================================================================
+     Download band
+     ====================================================================== */
+  .download {
+    margin: 80px 28px 0;
     max-width: var(--max);
     margin-left: auto; margin-right: auto;
-    background: var(--ink);
-    color: var(--paper);
+    background: #1F1610;
+    color: #F5EBD8;
     border-radius: 22px;
-    padding: 72px 56px;
-    position: relative;
-    overflow: hidden;
+    padding: 64px 56px;
+    position: relative; overflow: hidden;
   }
-  .download-band::before {
-    content: "";
-    position: absolute; inset: 0;
+  .download::before {
+    content: ""; position: absolute; inset: 0;
     background:
-      radial-gradient(600px 280px at 90% 10%, rgba(184,76,38,0.22), transparent 60%),
-      radial-gradient(420px 220px at 10% 90%, rgba(184,76,38,0.14), transparent 60%);
+      radial-gradient(520px 220px at 90% 10%, rgba(217,119,87,0.22), transparent 65%),
+      radial-gradient(400px 220px at 5% 95%, rgba(217,119,87,0.12), transparent 65%);
     pointer-events: none;
   }
-  .download-band > * { position: relative; }
-  .download-band h2 {
+  .download > * { position: relative; }
+  .download h2 {
     font-family: 'Instrument Serif', serif;
     font-weight: 400;
-    font-size: clamp(36px, 5vw, 58px);
+    font-size: clamp(34px, 5vw, 54px);
     line-height: 1.05; letter-spacing: -0.02em;
-    max-width: 18ch;
+    max-width: 20ch;
   }
-  .download-band h2 em { font-style: italic; color: #f0a889; }
-  .download-band p {
-    color: rgba(242, 238, 227, 0.7);
-    font-size: 17px;
-    margin-top: 20px;
-    max-width: 52ch;
+  .download h2 em { color: #F2B58C; font-style: italic; }
+  .download p {
+    color: rgba(245,235,216,0.68);
+    font-size: 16.5px;
+    margin-top: 16px;
+    max-width: 54ch;
   }
-  .download-band .btn-primary {
-    background: var(--paper); color: var(--ink);
-    margin-top: 36px;
-  }
-  .download-band .btn-primary:hover {
-    background: #fff;
-  }
-  .download-meta {
-    margin-top: 24px;
+  .download .cta-row {
+    margin-top: 32px;
     display: flex; gap: 12px; flex-wrap: wrap;
-    font-size: 13px; color: rgba(242,238,227,0.6);
-    font-family: 'JetBrains Mono', monospace;
   }
-  .download-meta .sep { opacity: 0.4; }
-  .download-meta .check { color: #8fc98f; }
-
-  @media (max-width: 720px) {
-    .download-band { padding: 48px 28px; }
+  .download .btn-primary {
+    background: var(--shell); color: var(--text);
+  }
+  .download .btn-primary:hover { background: #fff; }
+  .download .btn-secondary {
+    background: rgba(245, 235, 216, 0.08);
+    color: #F5EBD8;
+    border: 1px solid rgba(245, 235, 216, 0.18);
+  }
+  .download .btn-secondary:hover { background: rgba(245, 235, 216, 0.14); }
+  .download .attest {
+    margin-top: 22px;
+    display: flex; gap: 10px; flex-wrap: wrap;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    color: rgba(245,235,216,0.55);
+  }
+  .download .attest .sep { opacity: 0.4; }
+  .download .attest .ok { color: #9DCF9D; }
+  @media (max-width: 680px) {
+    .download { padding: 48px 28px; margin: 48px 16px 0; }
   }
 
-  /* ======================= Footer ======================= */
+  /* ======================================================================
+     Footer
+     ====================================================================== */
   footer {
-    padding: 80px 0 60px;
-    border-top: 1px solid var(--rule);
-    margin-top: 120px;
-    color: var(--ink-muted);
-    font-size: 14px;
+    padding: 80px 0 56px;
+    margin-top: 64px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted); font-size: 14px;
   }
   .footer-grid {
     display: grid;
     grid-template-columns: 2fr 1fr 1fr 1fr;
     gap: 48px;
-    margin-bottom: 48px;
+    margin-bottom: 40px;
   }
   .footer-col h4 {
     font-family: 'Instrument Serif', serif;
-    font-size: 16px; font-weight: 400;
-    margin-bottom: 16px; color: var(--ink);
+    font-size: 15px; font-weight: 400;
+    margin-bottom: 14px; color: var(--text);
   }
-  .footer-col a {
-    display: block; padding: 5px 0;
-    color: var(--ink-muted);
-  }
-  .footer-col a:hover { color: var(--ink); }
+  .footer-col a { display: block; padding: 4px 0; color: var(--text-muted); }
+  .footer-col a:hover { color: var(--text); }
   .footer-bottom {
     display: flex; justify-content: space-between; align-items: center;
-    padding-top: 32px;
-    border-top: 1px solid var(--rule);
-    font-size: 13px; color: var(--ink-faint);
+    padding-top: 28px;
+    border-top: 1px solid var(--border);
+    font-size: 12.5px; color: var(--text-faint);
     flex-wrap: wrap; gap: 16px;
   }
-  .footer-bottom .brand { font-size: 14px; }
+  .footer-bottom .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
   @media (max-width: 720px) {
     .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
   }
 
-  /* ======================= Entrance animation ======================= */
-  .reveal { opacity: 0; transform: translateY(12px); transition: all 0.7s cubic-bezier(.2,.7,.2,1); }
+  /* reveal */
+  .reveal { opacity: 0; transform: translateY(10px); transition: all 0.7s cubic-bezier(.2,.7,.2,1); }
   .reveal.in { opacity: 1; transform: none; }
 </style>
 </head>
 
 <body>
 
-<!-- ======================= NAV ======================= -->
+<!-- ========================= NAV ========================= -->
 <nav>
   <div class="nav-inner">
     <a href="#top" class="brand">
@@ -554,8 +584,8 @@
       <span>Jurni</span>
     </a>
     <div class="nav-links">
-      <a href="#why">Why</a>
-      <a href="#how">How</a>
+      <a href="#see">What you see</a>
+      <a href="#how">How it works</a>
       <a href="#privacy">Privacy</a>
       <a href="https://github.com/abehairy/jurni-os" target="_blank" rel="noopener">GitHub</a>
       <a href="#download" class="nav-cta">Download</a>
@@ -563,309 +593,394 @@
   </div>
 </nav>
 
-<!-- ======================= HERO ======================= -->
+<!-- ========================= HERO ========================= -->
 <header class="hero" id="top">
-  <div class="wrap hero-inner">
+  <div class="wrap">
     <span class="eyebrow">
-      <span class="pulse"></span>
-      v0.1.1 &middot; Apple Silicon + Intel &middot; signed &amp; notarized &middot; auto-updating
+      <span class="eyebrow-dot"></span>
+      v0.1.1 &middot; macOS, signed &amp; notarized by Apple
     </span>
 
     <h1 class="hero-title serif">
-      A dashboard <em>for your life.</em>
+      A mirror for the life<br>
+      you've been living<br>
+      <em>in your chats.</em>
     </h1>
 
     <p class="hero-lede">
-      Jurni reads across your Claude, ChatGPT, X, LinkedIn, calendar and
-      photos — and quietly assembles the whole picture. The people you care
-      about, the projects you're building, the patterns you return to. All
-      stored on your machine. Never ours.
+      Jurni reads your <strong>Claude</strong> and <strong>ChatGPT</strong> history
+      and draws the landscape of what's actually mattered &mdash; the topics you
+      keep returning to, the people you name, the tone of each week. No score.
+      No prescription. Just recognition.
     </p>
 
     <div class="hero-cta">
       <a href="#download" class="btn btn-primary">
         Download for macOS
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
       </a>
       <a href="https://github.com/abehairy/jurni-os" target="_blank" rel="noopener" class="btn btn-ghost">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-        Star on GitHub
+        <svg viewBox="0 0 16 16" fill="currentColor" style="width:15px;height:15px;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        Source on GitHub
       </a>
     </div>
 
     <div class="hero-meta">
-      <span>macOS 10.15+</span>
-      <span class="dot"></span>
-      <span>Apple Silicon + Intel</span>
-      <span class="dot"></span>
-      <span>MIT licensed</span>
-      <span class="dot"></span>
-      <span>Local-first, no telemetry</span>
+      <span>macOS 10.15+</span><span class="sep">/</span>
+      <span>Apple Silicon + Intel</span><span class="sep">/</span>
+      <span class="ok">✓ Signed &amp; notarized</span><span class="sep">/</span>
+      <span class="ok">✓ Auto-updates</span><span class="sep">/</span>
+      <span>MIT open source</span>
     </div>
   </div>
 </header>
 
-<!-- ======================= SHOWCASE MOCK ======================= -->
-<section class="showcase" style="padding-top: 0;">
+<!-- ========================= MOCK: the real Life Landscape ========================= -->
+<section class="mock-wrap" style="padding-top: 20px;">
   <div class="wrap reveal">
     <div class="mock-frame">
       <div class="mock-chrome">
-        <span></span><span></span><span></span>
-        <span class="mock-url">Jurni / Life Landscape &mdash; this week</span>
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="path">Jurni &rsaquo; Life Landscape &rsaquo; 4W</span>
       </div>
-      <div class="mock-body">
-        <aside class="mock-sidebar">
-          <div class="mock-side-item active"><span class="bullet"></span> Landscape</div>
-          <div class="mock-side-item"><span class="bullet"></span> People</div>
-          <div class="mock-side-item"><span class="bullet"></span> Themes</div>
-          <div class="mock-side-item"><span class="bullet"></span> Timeline</div>
-          <div class="mock-side-item"><span class="bullet"></span> Briefing</div>
-          <div style="margin-top: 20px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.06); color: rgba(255,255,255,0.35); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;">Sources</div>
-          <div class="mock-side-item"><span class="bullet" style="background:#d4a574;"></span> Claude</div>
-          <div class="mock-side-item"><span class="bullet" style="background:#19c37d;"></span> ChatGPT</div>
-          <div class="mock-side-item"><span class="bullet" style="background:#1d9bf0;"></span> X / LinkedIn</div>
-          <div class="mock-side-item"><span class="bullet" style="background:#b84c26;"></span> Calendar</div>
-        </aside>
-        <main class="mock-content">
+
+      <div class="mock-topbar">
+        <div class="mock-caption">
+          <div class="t serif">This month, you've been living mostly in <em>Work</em> and <em>Craft</em>.</div>
+          <div class="s">428 moments &middot; 24 topics &middot; 18 people named &middot; tone: focused, a little stretched</div>
+        </div>
+        <div class="mock-chips">
+          <span class="chip-dark">1W</span>
+          <span class="chip-dark active">4W</span>
+          <span class="chip-dark">12W</span>
+          <span class="chip-dark">1Y</span>
+        </div>
+      </div>
+
+      <div class="mock-grid">
+        <!-- Row 1: Work + Craft dominating -->
+        <div class="tile s5 r2 cat-work">
           <div>
-            <div class="mock-h">Your landscape, this week</div>
-            <div class="mock-sub">432 moments &middot; 28 threads &middot; 64 people mentioned</div>
+            <div class="cat">Work</div>
+            <div class="topic">Clinera</div>
           </div>
-          <div class="mock-grid">
-            <div class="tile s5">Building Jurni</div>
-            <div class="tile s4 v2">Health &amp; running</div>
-            <div class="tile s3 v3">Family</div>
-            <div class="tile s3 v4">Reading list</div>
-            <div class="tile s4 v5">Nuclear / AGI debate</div>
-            <div class="tile s2">Hiring</div>
-            <div class="tile s3 v2">Trip to Tokyo</div>
+          <div class="meta">
+            <span class="change up">▲ 62 · 18%</span>
+            <span class="tone">alive</span>
           </div>
-          <div class="mock-row" style="margin-top: 6px;">
-            <span class="chip accent"><span class="d"></span> Top person: Nesma</span>
-            <span class="chip"><span class="d"></span> Rising: &ldquo;jurni-os&rdquo; launch</span>
-            <span class="chip"><span class="d"></span> Tone: focused, building</span>
+        </div>
+        <div class="tile s4 cat-craft">
+          <div>
+            <div class="cat">Craft</div>
+            <div class="topic">Jurni pipeline</div>
           </div>
-        </main>
+          <div class="meta">
+            <span class="change up">▲ 41 · 24%</span>
+            <span class="tone">building</span>
+          </div>
+        </div>
+        <div class="tile s3 cat-mind">
+          <div>
+            <div class="cat">Mind</div>
+            <div class="topic">AGI debate</div>
+          </div>
+          <div class="meta">
+            <span class="change up">▲ 8%</span>
+            <span class="tone">open</span>
+          </div>
+        </div>
+
+        <div class="tile s2 cat-money">
+          <div>
+            <div class="cat">Money</div>
+            <div class="topic">Fundraising</div>
+          </div>
+          <div class="meta">
+            <span class="change down">▼ 12%</span>
+            <span class="tone">stuck</span>
+          </div>
+        </div>
+        <div class="tile s3 cat-family">
+          <div>
+            <div class="cat">Family</div>
+            <div class="topic">Nesma</div>
+          </div>
+          <div class="meta">
+            <span class="change up">▲ 24 · 6%</span>
+            <span class="tone">warm</span>
+          </div>
+        </div>
+        <div class="tile s2 cat-body">
+          <div>
+            <div class="cat">Body</div>
+            <div class="topic">Running</div>
+          </div>
+          <div class="meta">
+            <span class="change down">▼ 30%</span>
+            <span class="tone">waiting</span>
+          </div>
+        </div>
+
+        <!-- Row 3 -->
+        <div class="tile s3 cat-peers">
+          <div>
+            <div class="cat">Peers</div>
+            <div class="topic">Hiring</div>
+          </div>
+          <div class="meta">
+            <span class="change up">▲ 4%</span>
+            <span class="tone">steady</span>
+          </div>
+        </div>
+        <div class="tile s3 cat-love">
+          <div>
+            <div class="cat">Love</div>
+            <div class="topic">Trip to Tokyo</div>
+          </div>
+          <div class="meta">
+            <span class="change up">▲ new</span>
+            <span class="tone">looking forward</span>
+          </div>
+        </div>
+        <div class="tile s3 cat-faith">
+          <div>
+            <div class="cat">Faith</div>
+            <div class="topic">Ramadan planning</div>
+          </div>
+          <div class="meta">
+            <span class="change up">▲ 3%</span>
+            <span class="tone">quiet</span>
+          </div>
+        </div>
+        <div class="tile s3 cat-hearth">
+          <div>
+            <div class="cat">Hearth</div>
+            <div class="topic">Apartment move</div>
+          </div>
+          <div class="meta">
+            <span class="change up">▲ 11%</span>
+            <span class="tone">unsettled</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mock-scrubber">
+        <span>Apr 2025</span>
+        <div class="track"><div class="fill"></div><div class="knob"></div></div>
+        <span>Apr 2026</span>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ======================= THE PROBLEM ======================= -->
-<section id="why">
+<!-- ========================= WHAT YOU SEE ========================= -->
+<section id="see" style="padding-top: 0;">
   <div class="wrap">
-    <span class="section-label">The problem</span>
+    <span class="section-label">What you're actually looking at</span>
     <h2 class="section-title serif">
-      You already write <em>the book of you,</em> every day. You just can't read it.
+      Three axes. <em>Nothing invented.</em>
     </h2>
-    <div class="problem-grid reveal">
-      <div class="problem-card">
-        <h3>Fragmented</h3>
-        <p>
-          Claude knows what you're building. ChatGPT knows what you're
-          learning. X knows what you're arguing about. Your calendar knows
-          who's pulling on your time. Your photos remember what you saw.
-          Each holds a fragment. Nothing holds the whole.
-        </p>
+    <p class="section-lede">
+      Jurni doesn't generate a score or a prescription. It names what's
+      already in your conversations, and lets you slide week by week through
+      how it's shifted.
+    </p>
+
+    <div class="rows">
+      <div class="row reveal">
+        <div>
+          <div class="num">01</div>
+          <div class="label">Topics</div>
+        </div>
+        <div>
+          <h3 class="serif">The named things you return to.</h3>
+          <p>
+            Not tags. Not keywords. The actual subjects &mdash; <code>Clinera</code>,
+            <code>Nesma</code>, <code>Career shift</code>, <code>Tokyo</code>. Tile size
+            = how much of your attention that period. Tile color = which domain it belongs to.
+          </p>
+        </div>
       </div>
-      <div class="problem-card">
-        <h3>Rented</h3>
-        <p>
-          And that fragment lives on someone else's servers, under someone
-          else's terms. The richest record of your inner life — the one you
-          generated — isn't yours to search, to read back, or to own.
-          <br><br>
-          Jurni inverts that. Local by default. Open source. Your key, your
-          machine, your data.
-        </p>
+
+      <div class="row reveal">
+        <div>
+          <div class="num">02</div>
+          <div class="label">Domains</div>
+        </div>
+        <div>
+          <h3 class="serif">Twelve places a life gets lived.</h3>
+          <p>
+            Every topic is sorted into one of twelve domains. Red-browns for
+            pressure and output, greens for growth, blues for contemplation,
+            greys for the quiet parts. The palette does half the work of the
+            insight.
+          </p>
+        </div>
+      </div>
+
+      <div class="row reveal">
+        <div>
+          <div class="num">03</div>
+          <div class="label">Tones</div>
+        </div>
+        <div>
+          <h3 class="serif">One word for how the week felt.</h3>
+          <p>
+            Each tile carries a tone read from your own language. <em>Open</em>,
+            <em>stuck</em>, <em>alive</em>, <em>waiting</em>, <em>warm</em>,
+            <em>unsettled</em>. You'll recognize them before you finish reading.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Domains strip -->
+    <div style="margin-top: 64px;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 14px;">The twelve domains</div>
+      <div class="domains reveal">
+        <div class="domain d-work">Work</div>
+        <div class="domain d-craft">Craft</div>
+        <div class="domain d-money">Money</div>
+        <div class="domain d-mind">Mind</div>
+        <div class="domain d-body">Body</div>
+        <div class="domain d-family">Family</div>
+        <div class="domain d-love">Love</div>
+        <div class="domain d-peers">Peers</div>
+        <div class="domain d-faith">Faith</div>
+        <div class="domain d-hearth">Hearth</div>
+        <div class="domain d-public">Public</div>
+        <div class="domain d-grief">Grief</div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ======================= PILLARS ======================= -->
-<section style="padding-top: 0;">
-  <div class="wrap">
-    <span class="section-label">What you get</span>
-    <h2 class="section-title serif">
-      One quiet place for <em>the whole of you.</em>
-    </h2>
-
-    <div class="pillars reveal">
-      <div class="pillar">
-        <div class="pillar-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        </div>
-        <h3>Life Landscape</h3>
-        <p>A living treemap of the topics, projects and people you return to most. Zoom in, zoom out, watch it shift over weeks.</p>
-      </div>
-      <div class="pillar">
-        <div class="pillar-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 22c0-4 4-6 8-6s8 2 8 6"/></svg>
-        </div>
-        <h3>People you talk about</h3>
-        <p>Not a follower count. The humans you actually mention — in your private threads, weighted by how you bring them up.</p>
-      </div>
-      <div class="pillar">
-        <div class="pillar-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg>
-        </div>
-        <h3>Weekly briefing</h3>
-        <p>Every Monday, a one-page read-out of what shifted, what you focused on, what's repeating, what's new.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ======================= HOW IT WORKS ======================= -->
+<!-- ========================= HOW IT WORKS ========================= -->
 <section id="how">
   <div class="wrap">
     <span class="section-label">How it works</span>
     <h2 class="section-title serif">
-      Three pieces. <em>Nothing leaves your machine.</em>
+      Three moves. <em>All of them local.</em>
     </h2>
 
-    <div class="flow">
-      <div class="flow-row reveal">
-        <div class="flow-num">01</div>
+    <div class="rows" style="margin-top: 44px;">
+      <div class="row reveal">
         <div>
-          <div class="flow-title">Connect</div>
+          <div class="num">01</div>
+          <div class="label">Connect</div>
         </div>
-        <div class="flow-body">
-          Point Jurni at Claude, ChatGPT, X, LinkedIn, Facebook, Instagram, your
-          calendar, your photos. Connectors run in a local browser; no OAuth
-          handoffs to our servers, because there are no servers.
+        <div>
+          <h3 class="serif">Point it at your chats.</h3>
+          <p>
+            A local browser connector walks through your Claude and ChatGPT
+            history the same way you would. No OAuth, no server on our side
+            &mdash; we don't have one.
+          </p>
         </div>
       </div>
-
-      <div class="flow-row reveal">
-        <div class="flow-num">02</div>
+      <div class="row reveal">
         <div>
-          <div class="flow-title">Process</div>
+          <div class="num">02</div>
+          <div class="label">Process</div>
         </div>
-        <div class="flow-body">
-          Each new conversation, post or event is broken into moments.
-          An LLM you provide (OpenRouter, Anthropic, OpenAI — your key) extracts
-          entities, emotions, themes, decisions. Everything lands in a local
-          SQLite database under <code class="mono">~/.jurni/</code>.
+        <div>
+          <h3 class="serif">Categorize with your own LLM key.</h3>
+          <p>
+            Each conversation is broken into moments. An LLM you provide
+            (OpenRouter, Anthropic, OpenAI) extracts topic, domain, people,
+            and tone. Results land in a SQLite file in
+            <code>~/.jurni/</code>. Nothing transits us.
+          </p>
         </div>
       </div>
-
-      <div class="flow-row reveal">
-        <div class="flow-num">03</div>
+      <div class="row reveal">
         <div>
-          <div class="flow-title">Reflect</div>
+          <div class="num">03</div>
+          <div class="label">Read</div>
         </div>
-        <div class="flow-body">
-          The dashboard reads that database directly. Every view — Landscape,
-          People, Timeline, Briefing — is a query, not a cloud call. Close the
-          app and it all stays on your disk, readable with any SQLite client.
+        <div>
+          <h3 class="serif">Slide week by week.</h3>
+          <p>
+            The landscape redraws in place. Drill into a tile for the
+            specific threads behind it &mdash; the stories, the people named,
+            the tone reading. Quit the app and everything stays on your disk,
+            readable by any SQLite client.
+          </p>
         </div>
       </div>
-    </div>
-
-    <div class="tech">
-      <span class="chip-light">Electron &middot; React</span>
-      <span class="chip-light">SQLite (better-sqlite3)</span>
-      <span class="chip-light">OpenRouter / Anthropic / OpenAI</span>
-      <span class="chip-light">Node 20</span>
-      <span class="chip-light">MIT</span>
     </div>
   </div>
 </section>
 
-<!-- ======================= PRIVACY ======================= -->
+<!-- ========================= PRIVACY ========================= -->
 <section id="privacy" style="padding-top: 0;">
   <div class="wrap">
-    <div class="quote-block reveal">
-      <span class="section-label">Privacy</span>
+    <div class="privacy reveal">
+      <span class="section-label">Privacy &mdash; the actual commitment</span>
       <blockquote class="serif">
-        Your life's record should live on <em>your</em> machine, under
-        <em>your</em> terms.
+        No cloud. No account. No telemetry. Your <em>key</em>, your <em>machine</em>, your <em>data.</em>
       </blockquote>
-      <div class="quote-meta">
-        NO CLOUD &middot; NO ACCOUNT &middot; NO TELEMETRY &middot; NO DARK PATTERNS
-      </div>
-    </div>
-
-    <div class="problem-grid" style="margin-top: 48px;">
-      <div class="problem-card reveal">
-        <h3>Your key, your calls</h3>
-        <p>
-          Jurni never embeds a managed AI key. You bring your own OpenRouter
-          (or Anthropic, or OpenAI) key the first time you launch. Every
-          inference is a direct call from your machine to the model. We don't
-          proxy, log, or even see the traffic.
-        </p>
-      </div>
-      <div class="problem-card reveal">
-        <h3>Readable, portable, yours</h3>
-        <p>
-          The whole database is a single SQLite file in
-          <code class="mono">~/.jurni/</code>. Back it up with Time Machine.
-          Inspect it with any SQLite browser. Delete it any time and Jurni is
-          gone — no orphan accounts, no servers holding your shadow.
-        </p>
+      <div class="meta">
+        Single SQLite file at ~/.jurni/ &middot; back it up with Time Machine &middot; delete and it's gone
       </div>
     </div>
   </div>
 </section>
 
-<!-- ======================= DOWNLOAD ======================= -->
-<section id="download" style="padding: 60px 0;">
-  <div class="download-band reveal">
-    <h2 class="serif">Read back <em>your year,</em> on your machine.</h2>
+<!-- ========================= DOWNLOAD ========================= -->
+<section id="download" style="padding: 40px 0;">
+  <div class="download reveal">
+    <h2 class="serif">Read back your year, <em>on your machine.</em></h2>
     <p>
-      Jurni is free, open source, and runs entirely locally. Download the
-      signed &amp; notarized macOS build and you'll be reading your first
-      briefing in minutes.
+      Free, open source, runs entirely locally. The build is signed and
+      notarized by Apple &mdash; double-click and it opens, no Gatekeeper
+      warning, no right-click trick. Future versions install silently in
+      the background.
     </p>
-    <div style="display: flex; gap: 14px; flex-wrap: wrap; margin-top: 36px;">
+    <div class="cta-row">
       <a href="https://github.com/abehairy/jurni-os/releases/download/v0.1.1/Jurni-0.1.1-arm64.dmg" class="btn btn-primary">
-        Apple Silicon (M1-M4)
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+        Apple Silicon (M-series)
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
       </a>
-      <a href="https://github.com/abehairy/jurni-os/releases/download/v0.1.1/Jurni-0.1.1-x64.dmg" class="btn" style="background: rgba(242,238,227,0.1); color: var(--paper); border: 1px solid rgba(242,238,227,0.2);">
+      <a href="https://github.com/abehairy/jurni-os/releases/download/v0.1.1/Jurni-0.1.1-x64.dmg" class="btn btn-secondary">
         Intel Mac
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
       </a>
     </div>
-    <div class="download-meta">
-      <span class="check">✓ Signed &amp; notarized by Apple</span>
+    <div class="attest">
+      <span class="ok">✓ Developer ID: EVEREST MINDS (U2EBW657CK)</span>
       <span class="sep">/</span>
-      <span class="check">✓ Auto-updates enabled</span>
+      <span>v0.1.1 &middot; 207&nbsp;MB (arm64) &middot; 624&nbsp;MB (x64)</span>
       <span class="sep">/</span>
-      <span class="check">✓ MIT open source</span>
-      <span class="sep">/</span>
-      <a href="https://github.com/abehairy/jurni-os/releases" style="color: inherit; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(242,238,227,0.3);">All releases</a>
+      <a href="https://github.com/abehairy/jurni-os/releases" style="color: inherit; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(245,235,216,0.3);">All releases</a>
     </div>
   </div>
 </section>
 
-<!-- ======================= FOOTER ======================= -->
+<!-- ========================= FOOTER ========================= -->
 <footer>
   <div class="wrap">
     <div class="footer-grid">
       <div class="footer-col">
-        <div class="brand" style="margin-bottom: 16px;">
+        <div class="brand" style="margin-bottom: 14px;">
           <span class="brand-dot"></span>
           <span>Jurni</span>
         </div>
-        <p style="color: var(--ink-muted); max-width: 34ch; font-size: 14px;">
-          A local-first, open-source dashboard for your life. Built slowly,
-          in the open, by people who want to read back their own year without
-          handing it over.
+        <p style="color: var(--text-muted); max-width: 34ch; font-size: 14px;">
+          A mirror for the life you've been living in your chats. Built slowly,
+          in the open, by people who'd rather read their own year than hand it over.
         </p>
       </div>
       <div class="footer-col">
-        <h4>Product</h4>
-        <a href="#download">Download</a>
-        <a href="https://github.com/abehairy/jurni-os/releases">Releases</a>
+        <h4>Download</h4>
+        <a href="https://github.com/abehairy/jurni-os/releases/download/v0.1.1/Jurni-0.1.1-arm64.dmg">Apple Silicon</a>
+        <a href="https://github.com/abehairy/jurni-os/releases/download/v0.1.1/Jurni-0.1.1-x64.dmg">Intel Mac</a>
+        <a href="https://github.com/abehairy/jurni-os/releases">All releases</a>
         <a href="https://github.com/abehairy/jurni-os/blob/main/CHANGELOG.md">Changelog</a>
       </div>
       <div class="footer-col">
         <h4>Project</h4>
-        <a href="https://github.com/abehairy/jurni-os">GitHub</a>
+        <a href="https://github.com/abehairy/jurni-os">Source</a>
         <a href="https://github.com/abehairy/jurni-os/blob/main/CONTRIBUTING.md">Contribute</a>
         <a href="https://github.com/abehairy/jurni-os/blob/main/ARCHITECTURE.md">Architecture</a>
         <a href="https://github.com/abehairy/jurni-os/blob/main/SECURITY.md">Security</a>
@@ -874,25 +989,22 @@
         <h4>Legal</h4>
         <a href="https://github.com/abehairy/jurni-os/blob/main/LICENSE">MIT License</a>
         <a href="https://github.com/abehairy/jurni-os/blob/main/CODE_OF_CONDUCT.md">Code of Conduct</a>
+        <a href="https://github.com/abehairy/jurni-os/blob/main/VISION.md">Vision</a>
       </div>
     </div>
     <div class="footer-bottom">
       <div>© 2026 Jurni contributors. MIT licensed.</div>
-      <div class="mono">Built locally, on a MacBook, with love.</div>
+      <div class="mono">built locally, on a macbook, with love.</div>
     </div>
   </div>
 </footer>
 
 <script>
-  // Gentle reveal on scroll
   const io = new IntersectionObserver((entries) => {
     entries.forEach(e => {
-      if (e.isIntersecting) {
-        e.target.classList.add('in');
-        io.unobserve(e.target);
-      }
+      if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
     });
-  }, { threshold: 0.12, rootMargin: '0px 0px -60px 0px' });
+  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
   document.querySelectorAll('.reveal').forEach(el => io.observe(el));
 </script>
 
