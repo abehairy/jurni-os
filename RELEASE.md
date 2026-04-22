@@ -29,12 +29,12 @@ Before your first release, confirm:
 Publish target — baked into `package.json`:
 
 - **Owner**: `abehairy` (your personal GitHub account)
-- **Repo**: `jurni`
+- **Repo**: `jurni-os`
 
 Before your first release:
 
 - [ ] `gh` CLI is installed and logged in as `abehairy` with `repo` scope
-- [ ] Repo exists at `github.com/abehairy/jurni` (create with `gh repo create abehairy/jurni --public --source=. --push`)
+- [ ] Repo exists at `github.com/abehairy/jurni-os` (create with `gh repo create abehairy/jurni-os --public --source=. --push`)
 - [ ] `GH_TOKEN` in `.env` — electron-builder uses it to upload release assets.
       Easiest: `echo "GH_TOKEN=$(gh auth token)" >> .env`
 

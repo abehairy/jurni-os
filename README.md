@@ -7,8 +7,8 @@
 
   Local-first. AI-powered. Open source.
 
-  [Download](https://github.com/abehairy/jurni/releases/latest) ·
-  [Website](https://abehairy.github.io/jurni) ·
+  [Download](https://github.com/abehairy/jurni-os/releases/latest) ·
+  [Website](https://abehairy.github.io/jurni-os) ·
   [Architecture](./ARCHITECTURE.md) ·
   [Contribute](./CONTRIBUTING.md)
 </div>
@@ -53,7 +53,7 @@ being hardened one by one.
 ## Install
 
 Download the latest signed `.dmg` from the [Releases
-page](https://github.com/abehairy/jurni/releases/latest).
+page](https://github.com/abehairy/jurni-os/releases/latest).
 
 Jurni auto-updates once installed — no manual downloads after the first.
 
@@ -64,7 +64,7 @@ Jurni auto-updates once installed — no manual downloads after the first.
 ## Build from source
 
 ```bash
-git clone https://github.com/abehairy/jurni.git
+git clone https://github.com/abehairy/jurni-os.git
 cd jurni
 npm install
 npm run dev
@@ -153,7 +153,7 @@ MIT — see [LICENSE](./LICENSE). Build on it, fork it, ship your own version.
 
 ## Landing page
 
-The marketing site at [abehairy.github.io/jurni](https://abehairy.github.io/jurni)
+The marketing site at [abehairy.github.io/jurni-os](https://abehairy.github.io/jurni-os)
 is a single `docs/index.html` file served via GitHub Pages. To deploy
 changes: push to `main` — Pages picks it up from `docs/` automatically
 (once enabled in repo Settings → Pages → Source: `main` / `/docs`).
