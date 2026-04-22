@@ -248,12 +248,13 @@
     box-shadow:
       0 40px 80px -30px rgba(31, 30, 27, 0.34),
       0 14px 36px -12px rgba(31, 30, 27, 0.2);
-    transform: perspective(1600px) rotateY(-3deg) rotateX(1.5deg);
+    transform: perspective(1800px) rotateY(-2deg) rotateX(1deg);
     transform-origin: center center;
     transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    will-change: transform;
   }
   .hero-mock:hover {
-    transform: perspective(1600px) rotateY(-1deg) rotateX(0.5deg);
+    transform: perspective(1800px) rotateY(0deg) rotateX(0deg);
   }
   .hero-mock-chrome {
     display: flex; align-items: center; gap: 7px;
@@ -948,11 +949,6 @@
               <div class="cat">Body</div>
               <div class="topic">Running</div>
               <div class="m"><span class="change down">▼ 30</span><span class="tone">waiting</span></div>
-            </div>
-            <div class="htile cat-faith">
-              <div class="cat">Faith</div>
-              <div class="topic">Morning</div>
-              <div class="m"><span class="change up">▲ 3</span><span class="tone">quiet</span></div>
             </div>
           </div>
 
