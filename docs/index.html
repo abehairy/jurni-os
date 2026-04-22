@@ -104,10 +104,11 @@
     display: flex; align-items: center; gap: 10px;
     font-weight: 500; font-size: 15px; letter-spacing: -0.01em;
   }
-  .brand-dot {
-    width: 18px; height: 18px; border-radius: 50%;
-    background: radial-gradient(circle at 28% 28%, #E89E7A 0%, var(--accent) 45%, var(--accent-strong) 100%);
+  .brand img.logo {
+    width: 26px; height: 26px;
+    display: block;
   }
+  .brand img.logo-footer { width: 36px; height: 36px; }
   .nav-links {
     display: flex; gap: 26px; align-items: center;
     font-size: 14px; color: var(--text-muted);
@@ -154,8 +155,19 @@
      Hero
      ====================================================================== */
   .hero {
-    padding: 96px 0 48px;
+    padding: 88px 0 48px;
     position: relative;
+  }
+  .hero-mark {
+    width: 96px; height: 96px;
+    margin-bottom: 32px;
+    display: block;
+    filter: drop-shadow(0 10px 24px rgba(31, 30, 27, 0.08));
+    animation: float 8s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50%      { transform: translateY(-4px) rotate(6deg); }
   }
   .hero .eyebrow {
     display: inline-flex; align-items: center; gap: 10px;
@@ -580,7 +592,7 @@
 <nav>
   <div class="nav-inner">
     <a href="#top" class="brand">
-      <span class="brand-dot"></span>
+      <img src="logo.png" alt="Jurni" class="logo" width="26" height="26" />
       <span>Jurni</span>
     </a>
     <div class="nav-links">
@@ -596,6 +608,7 @@
 <!-- ========================= HERO ========================= -->
 <header class="hero" id="top">
   <div class="wrap">
+    <img src="logo.png" alt="" class="hero-mark" width="96" height="96" />
     <span class="eyebrow">
       <span class="eyebrow-dot"></span>
       v0.1.1 &middot; macOS, signed &amp; notarized by Apple
@@ -962,9 +975,9 @@
   <div class="wrap">
     <div class="footer-grid">
       <div class="footer-col">
-        <div class="brand" style="margin-bottom: 14px;">
-          <span class="brand-dot"></span>
-          <span>Jurni</span>
+        <div class="brand" style="margin-bottom: 14px; gap: 12px;">
+          <img src="logo.png" alt="Jurni" class="logo logo-footer" width="36" height="36" />
+          <span style="font-size: 17px;">Jurni</span>
         </div>
         <p style="color: var(--text-muted); max-width: 34ch; font-size: 14px;">
           A mirror for the life you've been living in your chats. Built slowly,
